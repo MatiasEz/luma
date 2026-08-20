@@ -1,0 +1,12 @@
+INSTALAR LUMA
+
+1. Arrastrá Luma al acceso “Aplicaciones”.
+2. Abrí Luma desde la carpeta Aplicaciones.
+
+Esta versión es una compilación de desarrollo. Si macOS impide la primera
+apertura, hacé Control + clic sobre Luma, elegí “Abrir” y confirmá una vez.
+
+Requiere una Mac con chip Apple y macOS 14 o posterior.
+
+Para distribuir Luma públicamente sin esta advertencia se necesita firmar la
+app con un certificado Developer ID Application y enviarla a notarizar a Apple.

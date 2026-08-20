@@ -1,0 +1,845 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		01BE3FB5B250BF8F09F5A0A7 /* NaturalLanguageAgendaParser.swift in Sources */ = {isa = PBXBuildFile; fileRef = D6C9B823BDC951341B575BA8 /* NaturalLanguageAgendaParser.swift */; };
+		028F30DCEE520234A66CC4F6 /* ReplanPreviewView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FC0521E6ACC544E1F2342162 /* ReplanPreviewView.swift */; };
+		05E3081EEDED6295D8600FBC /* GlobalShortcutController.swift in Sources */ = {isa = PBXBuildFile; fileRef = F9B144917CD30162039A2472 /* GlobalShortcutController.swift */; };
+		09387787485EA7459A2874E6 /* LumaAuthStorage.swift in Sources */ = {isa = PBXBuildFile; fileRef = DA376C6D56AB1625F25CA22D /* LumaAuthStorage.swift */; };
+		0A65087442E3E7CC0748EAE8 /* NotificationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9A4E5D4637E73344AD3D6264 /* NotificationService.swift */; };
+		10338C3F96ADBB8FD369AFF6 /* BalanceView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DCC9FF1AAA11ED6C31E67DA9 /* BalanceView.swift */; };
+		11BF98DF44375A88B939AACF /* LumaChat.swift in Sources */ = {isa = PBXBuildFile; fileRef = 76F120D64B9896B8E0E56D2A /* LumaChat.swift */; };
+		137816B417A865C97F935A00 /* MLXLMCommon in Frameworks */ = {isa = PBXBuildFile; productRef = 9299FB136B4E9E041E0C0CF9 /* MLXLMCommon */; };
+		21E43C806344A6E19493D47A /* AcademicSubject.swift in Sources */ = {isa = PBXBuildFile; fileRef = B8FAB1D7CDD5248DA66C9234 /* AcademicSubject.swift */; };
+		23AE47B738853110F72C0580 /* MLX in Frameworks */ = {isa = PBXBuildFile; productRef = 709309F7A7414259AE51EFDE /* MLX */; };
+		240EA3743A9CE31D36F69A97 /* CalendarIntegrationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = CFB20678E2F979B729393E1A /* CalendarIntegrationService.swift */; };
+		24E3C4EEC4EB5116982D2F4E /* MLXHuggingFace in Frameworks */ = {isa = PBXBuildFile; productRef = 9C1F452AFF6154D92C1C84FE /* MLXHuggingFace */; };
+		253993A6340D5F874BDEC48D /* LumaTask.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5CA11A2B1E413C85C9EF9121 /* LumaTask.swift */; };
+		256A8CA1AE474B57526F3BAE /* LumaPersistence.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4C3DB26720347CAB1A10FF38 /* LumaPersistence.swift */; };
+		2E17368994AA57167BE71D28 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = CE47B2CD78600E8891E874C3 /* Assets.xcassets */; };
+		2EA9D4176B03D8103BA04F41 /* LumaStyle.swift in Sources */ = {isa = PBXBuildFile; fileRef = E8F410A64901AD7D7ACDCD7F /* LumaStyle.swift */; };
+		2F03250C1A40E82FD31DACFF /* WeekView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8E530D87979F88A296DB676A /* WeekView.swift */; };
+		304D16566395FD4E00624D08 /* PDFStudyExtractor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1860049B6DCE6C5A39FF2210 /* PDFStudyExtractor.swift */; };
+		32EAC0BBFC6DB255D7B3BF21 /* NaturalLanguageTaskParser.swift in Sources */ = {isa = PBXBuildFile; fileRef = 868165E52BEE5113CAA5E7A2 /* NaturalLanguageTaskParser.swift */; };
+		3C27DA66D85D3A8012946571 /* DailyAgenda.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7057F6DE557A73C0192843CF /* DailyAgenda.swift */; };
+		41230147AB9BA3CDCE5845E8 /* StudyModeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB9CFCF051E68EA482EB1B1C /* StudyModeView.swift */; };
+		448D745AB4FE4BE12B14FCA1 /* InboxView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 578D63551A60B77180457E7C /* InboxView.swift */; };
+		4693B6D54535E47D8FBBB23B /* LifeArea.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7BEF13393A299B4E09EFFC69 /* LifeArea.swift */; };
+		5116E63855513C141E4A9AFB /* DailyPlanTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8FF5851AB3E962E565500647 /* DailyPlanTests.swift */; };
+		538C336A8B6B656F470788EE /* StudyContentQuality.swift in Sources */ = {isa = PBXBuildFile; fileRef = 565BD06EBFDC326BB3B42BD3 /* StudyContentQuality.swift */; };
+		5549023336706B42CB738F9C /* BehaviorLearningTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20566F4AE966906840EBBD7 /* BehaviorLearningTests.swift */; };
+		58745DF34AF7B19341C0A5C0 /* FocusRoomView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A47D21F5C98A2D72405BD944 /* FocusRoomView.swift */; };
+		59CAF46EE70650EEC16F1602 /* AcademicTaskMatcher.swift in Sources */ = {isa = PBXBuildFile; fileRef = B113A918052719BF4B9CB497 /* AcademicTaskMatcher.swift */; };
+		5A26FB298C5FF25F3752083B /* AgendaSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CF8A984BF0B58584A40CBF92 /* AgendaSettingsView.swift */; };
+		5C033DCA0FA99AEE102CB81F /* AcademicTaskFields.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5D4A7C6906B3210E18A3E986 /* AcademicTaskFields.swift */; };
+		5C74B575350E98E01F4B0FA4 /* FocusAmbientAudioPlayer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3AF6D326C308BBBF9D7F0C35 /* FocusAmbientAudioPlayer.swift */; };
+		5D016273095F3BAD1A19DEE9 /* rain_forest.mp3 in Resources */ = {isa = PBXBuildFile; fileRef = BB3CA16DAB12395A0DD15785 /* rain_forest.mp3 */; };
+		62EF2D89E3D3E2CDD2D50221 /* TaskDependency.swift in Sources */ = {isa = PBXBuildFile; fileRef = CEFC2E0A2D2C3D88721E9CA4 /* TaskDependency.swift */; };
+		684E3A9DA29D69F2765AE4EE /* SampleDataSeeder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 50240EE78944E3B3F17CFB73 /* SampleDataSeeder.swift */; };
+		6E5601CAC659B0042A085F9B /* NaturalLanguageTaskParserTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8D6FC1D0373FB59A3D57B9A8 /* NaturalLanguageTaskParserTests.swift */; };
+		72670121E2A1B42042C2B278 /* StudyGuide.swift in Sources */ = {isa = PBXBuildFile; fileRef = 14C9BE7C313DEABB3FA4A553 /* StudyGuide.swift */; };
+		73AB13E5067E75A444ADB33E /* PlanningPreferences.swift in Sources */ = {isa = PBXBuildFile; fileRef = C7B8639BA8DDD6182E037F33 /* PlanningPreferences.swift */; };
+		7B890BA8B271710204773CF3 /* TaskDependencyPicker.swift in Sources */ = {isa = PBXBuildFile; fileRef = 43E952770DAD7403C776EB79 /* TaskDependencyPicker.swift */; };
+		7BE0DEF32293DCCAF7782B37 /* TaskEditorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0E0FE0A718833060A037D646 /* TaskEditorView.swift */; };
+		7CB2E75125C50C5AB18A19B0 /* Supabase in Frameworks */ = {isa = PBXBuildFile; productRef = 6047C0B6B40AAB954B3FC98A /* Supabase */; };
+		845633394311AE133658DA2E /* FocusSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9A00C921F38EFD60386F45F3 /* FocusSession.swift */; };
+		8F76E23F5B7C37F0BFA3023F /* DailyAgendaTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E02EB9BC0FF5073EF086631D /* DailyAgendaTests.swift */; };
+		9102FF9AD5A042F70B6809B1 /* CloudSyncService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 332A5440BFF719B544D4D939 /* CloudSyncService.swift */; };
+		9657A03C7BE4ADCC51A2554A /* FivePhaseIntegrationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F76C383F37C53F6D442F47B4 /* FivePhaseIntegrationTests.swift */; };
+		984E889D4E57662A8E6CC973 /* BackupService.swift in Sources */ = {isa = PBXBuildFile; fileRef = C836146F86380C5A981B5301 /* BackupService.swift */; };
+		992195D6AE64DF2C24A52956 /* MLXLLM in Frameworks */ = {isa = PBXBuildFile; productRef = 00C314211B52ADA869236440 /* MLXLLM */; };
+		9C0B6272D11DFE663A39B1BE /* InsightsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8A5DB36102232D48611B3891 /* InsightsView.swift */; };
+		9CEBE2944B6B542C10BC5C91 /* AppState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 03DCDF371F4582F27AD7932E /* AppState.swift */; };
+		A04079A0BF74DB6A5C2576AC /* LocalAIEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = CD8B651929BE9806155F9EE3 /* LocalAIEngine.swift */; };
+		AA275BE380B7558509E462D6 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0C5A65312921C562F9563CE /* SettingsView.swift */; };
+		AD386679CA0AC92E4107BCEE /* TaskPlanner.swift in Sources */ = {isa = PBXBuildFile; fileRef = D301ED0FDBC3DE160922AE16 /* TaskPlanner.swift */; };
+		AEBE8D175814753705567E99 /* LumaChatIntentResolver.swift in Sources */ = {isa = PBXBuildFile; fileRef = 24DE22D0DE2546AC5CEC9162 /* LumaChatIntentResolver.swift */; };
+		B35950B0BE29CE420E34CA43 /* StudyScheduleBuilder.swift in Sources */ = {isa = PBXBuildFile; fileRef = A38E31480577EF7AD17F04AD /* StudyScheduleBuilder.swift */; };
+		B37EF7FD27B1DADE64AE3B82 /* QuickCaptureView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 495AC123845CCD6AA957D606 /* QuickCaptureView.swift */; };
+		B6A06440A5754421E770541C /* UpdateService.swift in Sources */ = {isa = PBXBuildFile; fileRef = B03930DD32D1CB32EC85F8BC /* UpdateService.swift */; };
+		BD1B8159D76F8509CBF877F7 /* AIDownloadProgressView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 53CF268B6251524D442FD55A /* AIDownloadProgressView.swift */; };
+		C0B3BD10CEAAA815B8CF1971 /* AppShellView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C7F052A498BC201F4495D27C /* AppShellView.swift */; };
+		C46F26120634EAA588BD1CCF /* rain_window.mp3 in Resources */ = {isa = PBXBuildFile; fileRef = FA969322A51D8BC9506137CF /* rain_window.mp3 */; };
+		CA7A81238D7C6EA5C870EC90 /* BehaviorLearningEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5E90D254FC94061086479EB2 /* BehaviorLearningEngine.swift */; };
+		CB664992AD3C62B62DCCACCD /* rain_soft.mp3 in Resources */ = {isa = PBXBuildFile; fileRef = 4866B94404DD2C7670EC661A /* rain_soft.mp3 */; };
+		CD1E55B45E1DDF684571537C /* LumaAssistantView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1178A9D96F563CEF12DC6735 /* LumaAssistantView.swift */; };
+		DBBE0C8F8669484EFC98530A /* SubjectGradeSummary.swift in Sources */ = {isa = PBXBuildFile; fileRef = FC9CD37885D1BF5AFAFC5DC6 /* SubjectGradeSummary.swift */; };
+		E1141EEAFBD349A864D096DA /* TaskPlannerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = DBE1910D93173EB3C01123CC /* TaskPlannerTests.swift */; };
+		E4B83C180FC7845177FE4161 /* OnboardingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 659E0A87305F9A80E967A5D2 /* OnboardingView.swift */; };
+		E87CBF35435ACE34B6F59A5A /* Tokenizers in Frameworks */ = {isa = PBXBuildFile; productRef = 14A667DA7AEE3E9B743E6B9D /* Tokenizers */; };
+		EE209126E8E1ED42C4D26C8D /* DashboardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3736DCE5466EE1EDA97731BC /* DashboardView.swift */; };
+		F2491F427E476AEBB3C14779 /* SubjectsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 92042D9755B0EF5BFE5E1D5E /* SubjectsView.swift */; };
+		F98B79B0D403A927F474B879 /* HuggingFace in Frameworks */ = {isa = PBXBuildFile; productRef = 26BB0B3518F8B72546A2CB0B /* HuggingFace */; };
+		F9A05FB79D6910A2803787E9 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 3BA25D59137079106FE2434D /* PrivacyInfo.xcprivacy */; };
+		FD048A4483552BBBF8AF5B89 /* LumaApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1547EF4F06745B612CEB60B /* LumaApp.swift */; };
+		FFC9D09EF6657D80B2AFDEC9 /* StudyModeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CB5B843C41EEE7F5BAA1C50D /* StudyModeTests.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		277A193FE4C68A777257EF0D /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = AACE5AD3943208FFB6B19277 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 0565F6C7DA26F0482928704E;
+			remoteInfo = Luma;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXFileReference section */
+		03DCDF371F4582F27AD7932E /* AppState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppState.swift; sourceTree = "<group>"; };
+		0E0FE0A718833060A037D646 /* TaskEditorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TaskEditorView.swift; sourceTree = "<group>"; };
+		1178A9D96F563CEF12DC6735 /* LumaAssistantView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LumaAssistantView.swift; sourceTree = "<group>"; };
+		14C9BE7C313DEABB3FA4A553 /* StudyGuide.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StudyGuide.swift; sourceTree = "<group>"; };
+		1860049B6DCE6C5A39FF2210 /* PDFStudyExtractor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PDFStudyExtractor.swift; sourceTree = "<group>"; };
+		24DE22D0DE2546AC5CEC9162 /* LumaChatIntentResolver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LumaChatIntentResolver.swift; sourceTree = "<group>"; };
+		332A5440BFF719B544D4D939 /* CloudSyncService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CloudSyncService.swift; sourceTree = "<group>"; };
+		3736DCE5466EE1EDA97731BC /* DashboardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardView.swift; sourceTree = "<group>"; };
+		3AF6D326C308BBBF9D7F0C35 /* FocusAmbientAudioPlayer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FocusAmbientAudioPlayer.swift; sourceTree = "<group>"; };
+		3BA25D59137079106FE2434D /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
+		43E952770DAD7403C776EB79 /* TaskDependencyPicker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TaskDependencyPicker.swift; sourceTree = "<group>"; };
+		4866B94404DD2C7670EC661A /* rain_soft.mp3 */ = {isa = PBXFileReference; lastKnownFileType = audio.mp3; path = rain_soft.mp3; sourceTree = "<group>"; };
+		495AC123845CCD6AA957D606 /* QuickCaptureView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuickCaptureView.swift; sourceTree = "<group>"; };
+		4C3DB26720347CAB1A10FF38 /* LumaPersistence.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LumaPersistence.swift; sourceTree = "<group>"; };
+		50240EE78944E3B3F17CFB73 /* SampleDataSeeder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SampleDataSeeder.swift; sourceTree = "<group>"; };
+		53CF268B6251524D442FD55A /* AIDownloadProgressView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AIDownloadProgressView.swift; sourceTree = "<group>"; };
+		565BD06EBFDC326BB3B42BD3 /* StudyContentQuality.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StudyContentQuality.swift; sourceTree = "<group>"; };
+		578D63551A60B77180457E7C /* InboxView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InboxView.swift; sourceTree = "<group>"; };
+		5CA11A2B1E413C85C9EF9121 /* LumaTask.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LumaTask.swift; sourceTree = "<group>"; };
+		5D4A7C6906B3210E18A3E986 /* AcademicTaskFields.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AcademicTaskFields.swift; sourceTree = "<group>"; };
+		5E90D254FC94061086479EB2 /* BehaviorLearningEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BehaviorLearningEngine.swift; sourceTree = "<group>"; };
+		6317FAA29F22A3EA8450208F /* LumaTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = LumaTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		659E0A87305F9A80E967A5D2 /* OnboardingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingView.swift; sourceTree = "<group>"; };
+		7057F6DE557A73C0192843CF /* DailyAgenda.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DailyAgenda.swift; sourceTree = "<group>"; };
+		76F120D64B9896B8E0E56D2A /* LumaChat.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LumaChat.swift; sourceTree = "<group>"; };
+		7AB8DDB9CC1B2FFE442204F7 /* Luma.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Luma.entitlements; sourceTree = "<group>"; };
+		7BEF13393A299B4E09EFFC69 /* LifeArea.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LifeArea.swift; sourceTree = "<group>"; };
+		868165E52BEE5113CAA5E7A2 /* NaturalLanguageTaskParser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NaturalLanguageTaskParser.swift; sourceTree = "<group>"; };
+		8A5DB36102232D48611B3891 /* InsightsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InsightsView.swift; sourceTree = "<group>"; };
+		8D6FC1D0373FB59A3D57B9A8 /* NaturalLanguageTaskParserTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NaturalLanguageTaskParserTests.swift; sourceTree = "<group>"; };
+		8E530D87979F88A296DB676A /* WeekView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WeekView.swift; sourceTree = "<group>"; };
+		8FF5851AB3E962E565500647 /* DailyPlanTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DailyPlanTests.swift; sourceTree = "<group>"; };
+		92042D9755B0EF5BFE5E1D5E /* SubjectsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SubjectsView.swift; sourceTree = "<group>"; };
+		9A00C921F38EFD60386F45F3 /* FocusSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FocusSession.swift; sourceTree = "<group>"; };
+		9A4E5D4637E73344AD3D6264 /* NotificationService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationService.swift; sourceTree = "<group>"; };
+		A20566F4AE966906840EBBD7 /* BehaviorLearningTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BehaviorLearningTests.swift; sourceTree = "<group>"; };
+		A38E31480577EF7AD17F04AD /* StudyScheduleBuilder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StudyScheduleBuilder.swift; sourceTree = "<group>"; };
+		A47D21F5C98A2D72405BD944 /* FocusRoomView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FocusRoomView.swift; sourceTree = "<group>"; };
+		B03930DD32D1CB32EC85F8BC /* UpdateService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UpdateService.swift; sourceTree = "<group>"; };
+		B113A918052719BF4B9CB497 /* AcademicTaskMatcher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AcademicTaskMatcher.swift; sourceTree = "<group>"; };
+		B8FAB1D7CDD5248DA66C9234 /* AcademicSubject.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AcademicSubject.swift; sourceTree = "<group>"; };
+		BB3CA16DAB12395A0DD15785 /* rain_forest.mp3 */ = {isa = PBXFileReference; lastKnownFileType = audio.mp3; path = rain_forest.mp3; sourceTree = "<group>"; };
+		BB9CFCF051E68EA482EB1B1C /* StudyModeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StudyModeView.swift; sourceTree = "<group>"; };
+		C0C5A65312921C562F9563CE /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
+		C7B8639BA8DDD6182E037F33 /* PlanningPreferences.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlanningPreferences.swift; sourceTree = "<group>"; };
+		C7F052A498BC201F4495D27C /* AppShellView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppShellView.swift; sourceTree = "<group>"; };
+		C836146F86380C5A981B5301 /* BackupService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BackupService.swift; sourceTree = "<group>"; };
+		CB5B843C41EEE7F5BAA1C50D /* StudyModeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StudyModeTests.swift; sourceTree = "<group>"; };
+		CD8B651929BE9806155F9EE3 /* LocalAIEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalAIEngine.swift; sourceTree = "<group>"; };
+		CE47B2CD78600E8891E874C3 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		CEFC2E0A2D2C3D88721E9CA4 /* TaskDependency.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TaskDependency.swift; sourceTree = "<group>"; };
+		CF8A984BF0B58584A40CBF92 /* AgendaSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgendaSettingsView.swift; sourceTree = "<group>"; };
+		CFB20678E2F979B729393E1A /* CalendarIntegrationService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CalendarIntegrationService.swift; sourceTree = "<group>"; };
+		D301ED0FDBC3DE160922AE16 /* TaskPlanner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TaskPlanner.swift; sourceTree = "<group>"; };
+		D6C9B823BDC951341B575BA8 /* NaturalLanguageAgendaParser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NaturalLanguageAgendaParser.swift; sourceTree = "<group>"; };
+		DA376C6D56AB1625F25CA22D /* LumaAuthStorage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LumaAuthStorage.swift; sourceTree = "<group>"; };
+		DBE1910D93173EB3C01123CC /* TaskPlannerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TaskPlannerTests.swift; sourceTree = "<group>"; };
+		DCC9FF1AAA11ED6C31E67DA9 /* BalanceView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BalanceView.swift; sourceTree = "<group>"; };
+		DF8C531E464C9C4EDE2648C6 /* Luma.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Luma.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		E02EB9BC0FF5073EF086631D /* DailyAgendaTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DailyAgendaTests.swift; sourceTree = "<group>"; };
+		E1547EF4F06745B612CEB60B /* LumaApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LumaApp.swift; sourceTree = "<group>"; };
+		E8F410A64901AD7D7ACDCD7F /* LumaStyle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LumaStyle.swift; sourceTree = "<group>"; };
+		F76C383F37C53F6D442F47B4 /* FivePhaseIntegrationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FivePhaseIntegrationTests.swift; sourceTree = "<group>"; };
+		F9B144917CD30162039A2472 /* GlobalShortcutController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GlobalShortcutController.swift; sourceTree = "<group>"; };
+		FA969322A51D8BC9506137CF /* rain_window.mp3 */ = {isa = PBXFileReference; lastKnownFileType = audio.mp3; path = rain_window.mp3; sourceTree = "<group>"; };
+		FC0521E6ACC544E1F2342162 /* ReplanPreviewView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReplanPreviewView.swift; sourceTree = "<group>"; };
+		FC9CD37885D1BF5AFAFC5DC6 /* SubjectGradeSummary.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SubjectGradeSummary.swift; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		94D6F6F04126826503BA1E53 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				23AE47B738853110F72C0580 /* MLX in Frameworks */,
+				992195D6AE64DF2C24A52956 /* MLXLLM in Frameworks */,
+				137816B417A865C97F935A00 /* MLXLMCommon in Frameworks */,
+				24E3C4EEC4EB5116982D2F4E /* MLXHuggingFace in Frameworks */,
+				F98B79B0D403A927F474B879 /* HuggingFace in Frameworks */,
+				E87CBF35435ACE34B6F59A5A /* Tokenizers in Frameworks */,
+				7CB2E75125C50C5AB18A19B0 /* Supabase in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		4295DFC07B25B9364749B4DC /* Views */ = {
+			isa = PBXGroup;
+			children = (
+				5D4A7C6906B3210E18A3E986 /* AcademicTaskFields.swift */,
+				CF8A984BF0B58584A40CBF92 /* AgendaSettingsView.swift */,
+				C7F052A498BC201F4495D27C /* AppShellView.swift */,
+				DCC9FF1AAA11ED6C31E67DA9 /* BalanceView.swift */,
+				3736DCE5466EE1EDA97731BC /* DashboardView.swift */,
+				A47D21F5C98A2D72405BD944 /* FocusRoomView.swift */,
+				578D63551A60B77180457E7C /* InboxView.swift */,
+				8A5DB36102232D48611B3891 /* InsightsView.swift */,
+				1178A9D96F563CEF12DC6735 /* LumaAssistantView.swift */,
+				659E0A87305F9A80E967A5D2 /* OnboardingView.swift */,
+				495AC123845CCD6AA957D606 /* QuickCaptureView.swift */,
+				C0C5A65312921C562F9563CE /* SettingsView.swift */,
+				BB9CFCF051E68EA482EB1B1C /* StudyModeView.swift */,
+				92042D9755B0EF5BFE5E1D5E /* SubjectsView.swift */,
+				43E952770DAD7403C776EB79 /* TaskDependencyPicker.swift */,
+				0E0FE0A718833060A037D646 /* TaskEditorView.swift */,
+				8E530D87979F88A296DB676A /* WeekView.swift */,
+			);
+			path = Views;
+			sourceTree = "<group>";
+		};
+		56B965F3366E62652474AD8C /* Luma */ = {
+			isa = PBXGroup;
+			children = (
+				CE47B2CD78600E8891E874C3 /* Assets.xcassets */,
+				7AB8DDB9CC1B2FFE442204F7 /* Luma.entitlements */,
+				E1547EF4F06745B612CEB60B /* LumaApp.swift */,
+				3BA25D59137079106FE2434D /* PrivacyInfo.xcprivacy */,
+				A16AAA544F0E395BEF78C8D2 /* Components */,
+				71B4472CB3AD2E35BFAE9D9C /* Models */,
+				831886F2D8C0E4573C7B246C /* Resources */,
+				CEC16FCFB9E9FD15ADB23AFD /* Services */,
+				4295DFC07B25B9364749B4DC /* Views */,
+			);
+			path = Luma;
+			sourceTree = "<group>";
+		};
+		71B4472CB3AD2E35BFAE9D9C /* Models */ = {
+			isa = PBXGroup;
+			children = (
+				B8FAB1D7CDD5248DA66C9234 /* AcademicSubject.swift */,
+				03DCDF371F4582F27AD7932E /* AppState.swift */,
+				7057F6DE557A73C0192843CF /* DailyAgenda.swift */,
+				9A00C921F38EFD60386F45F3 /* FocusSession.swift */,
+				7BEF13393A299B4E09EFFC69 /* LifeArea.swift */,
+				76F120D64B9896B8E0E56D2A /* LumaChat.swift */,
+				4C3DB26720347CAB1A10FF38 /* LumaPersistence.swift */,
+				5CA11A2B1E413C85C9EF9121 /* LumaTask.swift */,
+				C7B8639BA8DDD6182E037F33 /* PlanningPreferences.swift */,
+				14C9BE7C313DEABB3FA4A553 /* StudyGuide.swift */,
+				FC9CD37885D1BF5AFAFC5DC6 /* SubjectGradeSummary.swift */,
+				CEFC2E0A2D2C3D88721E9CA4 /* TaskDependency.swift */,
+			);
+			path = Models;
+			sourceTree = "<group>";
+		};
+		751CBF99010567D043B5DA42 = {
+			isa = PBXGroup;
+			children = (
+				56B965F3366E62652474AD8C /* Luma */,
+				E003F8E3CE0B21F5493C379F /* LumaTests */,
+				90CFB4B53B5F9EF91D718FC2 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		831886F2D8C0E4573C7B246C /* Resources */ = {
+			isa = PBXGroup;
+			children = (
+				8AAEEA5A8EF9D217E5315807 /* Audio */,
+			);
+			path = Resources;
+			sourceTree = "<group>";
+		};
+		8AAEEA5A8EF9D217E5315807 /* Audio */ = {
+			isa = PBXGroup;
+			children = (
+				BB3CA16DAB12395A0DD15785 /* rain_forest.mp3 */,
+				4866B94404DD2C7670EC661A /* rain_soft.mp3 */,
+				FA969322A51D8BC9506137CF /* rain_window.mp3 */,
+			);
+			path = Audio;
+			sourceTree = "<group>";
+		};
+		90CFB4B53B5F9EF91D718FC2 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				DF8C531E464C9C4EDE2648C6 /* Luma.app */,
+				6317FAA29F22A3EA8450208F /* LumaTests.xctest */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		A16AAA544F0E395BEF78C8D2 /* Components */ = {
+			isa = PBXGroup;
+			children = (
+				53CF268B6251524D442FD55A /* AIDownloadProgressView.swift */,
+				E8F410A64901AD7D7ACDCD7F /* LumaStyle.swift */,
+				FC0521E6ACC544E1F2342162 /* ReplanPreviewView.swift */,
+			);
+			path = Components;
+			sourceTree = "<group>";
+		};
+		CEC16FCFB9E9FD15ADB23AFD /* Services */ = {
+			isa = PBXGroup;
+			children = (
+				B113A918052719BF4B9CB497 /* AcademicTaskMatcher.swift */,
+				C836146F86380C5A981B5301 /* BackupService.swift */,
+				5E90D254FC94061086479EB2 /* BehaviorLearningEngine.swift */,
+				CFB20678E2F979B729393E1A /* CalendarIntegrationService.swift */,
+				332A5440BFF719B544D4D939 /* CloudSyncService.swift */,
+				3AF6D326C308BBBF9D7F0C35 /* FocusAmbientAudioPlayer.swift */,
+				F9B144917CD30162039A2472 /* GlobalShortcutController.swift */,
+				CD8B651929BE9806155F9EE3 /* LocalAIEngine.swift */,
+				DA376C6D56AB1625F25CA22D /* LumaAuthStorage.swift */,
+				24DE22D0DE2546AC5CEC9162 /* LumaChatIntentResolver.swift */,
+				D6C9B823BDC951341B575BA8 /* NaturalLanguageAgendaParser.swift */,
+				868165E52BEE5113CAA5E7A2 /* NaturalLanguageTaskParser.swift */,
+				9A4E5D4637E73344AD3D6264 /* NotificationService.swift */,
+				1860049B6DCE6C5A39FF2210 /* PDFStudyExtractor.swift */,
+				50240EE78944E3B3F17CFB73 /* SampleDataSeeder.swift */,
+				565BD06EBFDC326BB3B42BD3 /* StudyContentQuality.swift */,
+				A38E31480577EF7AD17F04AD /* StudyScheduleBuilder.swift */,
+				D301ED0FDBC3DE160922AE16 /* TaskPlanner.swift */,
+				B03930DD32D1CB32EC85F8BC /* UpdateService.swift */,
+			);
+			path = Services;
+			sourceTree = "<group>";
+		};
+		E003F8E3CE0B21F5493C379F /* LumaTests */ = {
+			isa = PBXGroup;
+			children = (
+				A20566F4AE966906840EBBD7 /* BehaviorLearningTests.swift */,
+				E02EB9BC0FF5073EF086631D /* DailyAgendaTests.swift */,
+				8FF5851AB3E962E565500647 /* DailyPlanTests.swift */,
+				F76C383F37C53F6D442F47B4 /* FivePhaseIntegrationTests.swift */,
+				8D6FC1D0373FB59A3D57B9A8 /* NaturalLanguageTaskParserTests.swift */,
+				CB5B843C41EEE7F5BAA1C50D /* StudyModeTests.swift */,
+				DBE1910D93173EB3C01123CC /* TaskPlannerTests.swift */,
+			);
+			path = LumaTests;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		0565F6C7DA26F0482928704E /* Luma */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 39082DED094B543B7F177A5B /* Build configuration list for PBXNativeTarget "Luma" */;
+			buildPhases = (
+				71162CE529E90DAEDA4BB5A5 /* Sources */,
+				988CDDC80A2A68B4C03DF20F /* Resources */,
+				94D6F6F04126826503BA1E53 /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = Luma;
+			packageProductDependencies = (
+				709309F7A7414259AE51EFDE /* MLX */,
+				00C314211B52ADA869236440 /* MLXLLM */,
+				9299FB136B4E9E041E0C0CF9 /* MLXLMCommon */,
+				9C1F452AFF6154D92C1C84FE /* MLXHuggingFace */,
+				26BB0B3518F8B72546A2CB0B /* HuggingFace */,
+				14A667DA7AEE3E9B743E6B9D /* Tokenizers */,
+				6047C0B6B40AAB954B3FC98A /* Supabase */,
+			);
+			productName = Luma;
+			productReference = DF8C531E464C9C4EDE2648C6 /* Luma.app */;
+			productType = "com.apple.product-type.application";
+		};
+		D4CD85C144854C8DA57B3903 /* LumaTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 04DA00EB8A99448AEEE86A94 /* Build configuration list for PBXNativeTarget "LumaTests" */;
+			buildPhases = (
+				CEE668F703A2CB9893788D3A /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				451A9C42B8C63659ECBC26D9 /* PBXTargetDependency */,
+			);
+			name = LumaTests;
+			packageProductDependencies = (
+			);
+			productName = LumaTests;
+			productReference = 6317FAA29F22A3EA8450208F /* LumaTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		AACE5AD3943208FFB6B19277 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = YES;
+				LastUpgradeCheck = 1430;
+				TargetAttributes = {
+					0565F6C7DA26F0482928704E = {
+						ProvisioningStyle = Automatic;
+					};
+				};
+			};
+			buildConfigurationList = DEFB5A06B29D6BCD602A2291 /* Build configuration list for PBXProject "Luma" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				Base,
+				en,
+			);
+			mainGroup = 751CBF99010567D043B5DA42;
+			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				17D4D2C650D5991DA7920535 /* XCRemoteSwiftPackageReference "mlx-swift" */,
+				0DF42C96A7AC6D837700E4B3 /* XCRemoteSwiftPackageReference "mlx-swift-lm" */,
+				F043435EC35F5DB07D556460 /* XCRemoteSwiftPackageReference "supabase-swift" */,
+				92F19CBEABA123AEB90C82E9 /* XCRemoteSwiftPackageReference "swift-huggingface" */,
+				38F98A0CBB256386AF1A82D6 /* XCRemoteSwiftPackageReference "swift-transformers" */,
+			);
+			preferredProjectObjectVersion = 77;
+			productRefGroup = 90CFB4B53B5F9EF91D718FC2 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				0565F6C7DA26F0482928704E /* Luma */,
+				D4CD85C144854C8DA57B3903 /* LumaTests */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		988CDDC80A2A68B4C03DF20F /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				2E17368994AA57167BE71D28 /* Assets.xcassets in Resources */,
+				F9A05FB79D6910A2803787E9 /* PrivacyInfo.xcprivacy in Resources */,
+				5D016273095F3BAD1A19DEE9 /* rain_forest.mp3 in Resources */,
+				CB664992AD3C62B62DCCACCD /* rain_soft.mp3 in Resources */,
+				C46F26120634EAA588BD1CCF /* rain_window.mp3 in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		71162CE529E90DAEDA4BB5A5 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				BD1B8159D76F8509CBF877F7 /* AIDownloadProgressView.swift in Sources */,
+				21E43C806344A6E19493D47A /* AcademicSubject.swift in Sources */,
+				5C033DCA0FA99AEE102CB81F /* AcademicTaskFields.swift in Sources */,
+				59CAF46EE70650EEC16F1602 /* AcademicTaskMatcher.swift in Sources */,
+				5A26FB298C5FF25F3752083B /* AgendaSettingsView.swift in Sources */,
+				C0B3BD10CEAAA815B8CF1971 /* AppShellView.swift in Sources */,
+				9CEBE2944B6B542C10BC5C91 /* AppState.swift in Sources */,
+				984E889D4E57662A8E6CC973 /* BackupService.swift in Sources */,
+				10338C3F96ADBB8FD369AFF6 /* BalanceView.swift in Sources */,
+				CA7A81238D7C6EA5C870EC90 /* BehaviorLearningEngine.swift in Sources */,
+				240EA3743A9CE31D36F69A97 /* CalendarIntegrationService.swift in Sources */,
+				9102FF9AD5A042F70B6809B1 /* CloudSyncService.swift in Sources */,
+				3C27DA66D85D3A8012946571 /* DailyAgenda.swift in Sources */,
+				EE209126E8E1ED42C4D26C8D /* DashboardView.swift in Sources */,
+				5C74B575350E98E01F4B0FA4 /* FocusAmbientAudioPlayer.swift in Sources */,
+				58745DF34AF7B19341C0A5C0 /* FocusRoomView.swift in Sources */,
+				845633394311AE133658DA2E /* FocusSession.swift in Sources */,
+				05E3081EEDED6295D8600FBC /* GlobalShortcutController.swift in Sources */,
+				448D745AB4FE4BE12B14FCA1 /* InboxView.swift in Sources */,
+				9C0B6272D11DFE663A39B1BE /* InsightsView.swift in Sources */,
+				4693B6D54535E47D8FBBB23B /* LifeArea.swift in Sources */,
+				A04079A0BF74DB6A5C2576AC /* LocalAIEngine.swift in Sources */,
+				FD048A4483552BBBF8AF5B89 /* LumaApp.swift in Sources */,
+				CD1E55B45E1DDF684571537C /* LumaAssistantView.swift in Sources */,
+				09387787485EA7459A2874E6 /* LumaAuthStorage.swift in Sources */,
+				11BF98DF44375A88B939AACF /* LumaChat.swift in Sources */,
+				AEBE8D175814753705567E99 /* LumaChatIntentResolver.swift in Sources */,
+				256A8CA1AE474B57526F3BAE /* LumaPersistence.swift in Sources */,
+				2EA9D4176B03D8103BA04F41 /* LumaStyle.swift in Sources */,
+				253993A6340D5F874BDEC48D /* LumaTask.swift in Sources */,
+				01BE3FB5B250BF8F09F5A0A7 /* NaturalLanguageAgendaParser.swift in Sources */,
+				32EAC0BBFC6DB255D7B3BF21 /* NaturalLanguageTaskParser.swift in Sources */,
+				0A65087442E3E7CC0748EAE8 /* NotificationService.swift in Sources */,
+				E4B83C180FC7845177FE4161 /* OnboardingView.swift in Sources */,
+				304D16566395FD4E00624D08 /* PDFStudyExtractor.swift in Sources */,
+				73AB13E5067E75A444ADB33E /* PlanningPreferences.swift in Sources */,
+				B37EF7FD27B1DADE64AE3B82 /* QuickCaptureView.swift in Sources */,
+				028F30DCEE520234A66CC4F6 /* ReplanPreviewView.swift in Sources */,
+				684E3A9DA29D69F2765AE4EE /* SampleDataSeeder.swift in Sources */,
+				AA275BE380B7558509E462D6 /* SettingsView.swift in Sources */,
+				538C336A8B6B656F470788EE /* StudyContentQuality.swift in Sources */,
+				72670121E2A1B42042C2B278 /* StudyGuide.swift in Sources */,
+				41230147AB9BA3CDCE5845E8 /* StudyModeView.swift in Sources */,
+				B35950B0BE29CE420E34CA43 /* StudyScheduleBuilder.swift in Sources */,
+				DBBE0C8F8669484EFC98530A /* SubjectGradeSummary.swift in Sources */,
+				F2491F427E476AEBB3C14779 /* SubjectsView.swift in Sources */,
+				62EF2D89E3D3E2CDD2D50221 /* TaskDependency.swift in Sources */,
+				7B890BA8B271710204773CF3 /* TaskDependencyPicker.swift in Sources */,
+				7BE0DEF32293DCCAF7782B37 /* TaskEditorView.swift in Sources */,
+				AD386679CA0AC92E4107BCEE /* TaskPlanner.swift in Sources */,
+				B6A06440A5754421E770541C /* UpdateService.swift in Sources */,
+				2F03250C1A40E82FD31DACFF /* WeekView.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		CEE668F703A2CB9893788D3A /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				5549023336706B42CB738F9C /* BehaviorLearningTests.swift in Sources */,
+				8F76E23F5B7C37F0BFA3023F /* DailyAgendaTests.swift in Sources */,
+				5116E63855513C141E4A9AFB /* DailyPlanTests.swift in Sources */,
+				9657A03C7BE4ADCC51A2554A /* FivePhaseIntegrationTests.swift in Sources */,
+				6E5601CAC659B0042A085F9B /* NaturalLanguageTaskParserTests.swift in Sources */,
+				FFC9D09EF6657D80B2AFDEC9 /* StudyModeTests.swift in Sources */,
+				E1141EEAFBD349A864D096DA /* TaskPlannerTests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		451A9C42B8C63659ECBC26D9 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 0565F6C7DA26F0482928704E /* Luma */;
+			targetProxy = 277A193FE4C68A777257EF0D /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		1882B0980A47A72FB926BD6B /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = Luma/Luma.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 7;
+				ENABLE_APP_SANDBOX = YES;
+				ENABLE_HARDENED_RUNTIME = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = Luma;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.productivity";
+				INFOPLIST_KEY_LUMA_SUPABASE_PUBLISHABLE_KEY = sb_publishable_nxXXMkg1lU5G14rkEwwELQ_JxoTGddU;
+				INFOPLIST_KEY_LUMA_SUPABASE_URL = "https://otzefpzacufwyerqsfct.supabase.co";
+				INFOPLIST_KEY_NSCalendarsFullAccessUsageDescription = "Luma usa tus eventos para evitar conflictos y, si activás la sincronización, agregar tareas y bloques de tu plan.";
+				INFOPLIST_KEY_NSCalendarsUsageDescription = "Luma usa tus eventos para evitar conflictos con tu agenda.";
+				INFOPLIST_KEY_NSHumanReadableCopyright = Luma;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MARKETING_VERSION = 0.4.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.luma.organizer;
+				PRODUCT_NAME = Luma;
+				SDKROOT = macosx;
+				SWIFT_VERSION = 6.0;
+			};
+			name = Release;
+		};
+		3B86AE427B76A8BE72A17C8E /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				COMBINE_HIDPI_IMAGES = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@loader_path/../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.luma.organizer.tests;
+				SDKROOT = macosx;
+				SWIFT_VERSION = 6.0;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Luma.app/Contents/MacOS/Luma";
+			};
+			name = Release;
+		};
+		6A07A459DB18752AD74A145A /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				COMBINE_HIDPI_IMAGES = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@loader_path/../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.luma.organizer.tests;
+				SDKROOT = macosx;
+				SWIFT_VERSION = 6.0;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Luma.app/Contents/MacOS/Luma";
+			};
+			name = Debug;
+		};
+		6CB952023A286F13211CB884 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					"DEBUG=1",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		C0A4C21F59ADC6DDCD811DF7 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
+		FEECD67107BB7AE74F3574C8 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = Luma/Luma.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 7;
+				ENABLE_APP_SANDBOX = YES;
+				ENABLE_HARDENED_RUNTIME = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = Luma;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.productivity";
+				INFOPLIST_KEY_LUMA_SUPABASE_PUBLISHABLE_KEY = sb_publishable_nxXXMkg1lU5G14rkEwwELQ_JxoTGddU;
+				INFOPLIST_KEY_LUMA_SUPABASE_URL = "https://otzefpzacufwyerqsfct.supabase.co";
+				INFOPLIST_KEY_NSCalendarsFullAccessUsageDescription = "Luma usa tus eventos para evitar conflictos y, si activás la sincronización, agregar tareas y bloques de tu plan.";
+				INFOPLIST_KEY_NSCalendarsUsageDescription = "Luma usa tus eventos para evitar conflictos con tu agenda.";
+				INFOPLIST_KEY_NSHumanReadableCopyright = Luma;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MARKETING_VERSION = 0.4.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.luma.organizer;
+				PRODUCT_NAME = Luma;
+				SDKROOT = macosx;
+				SWIFT_VERSION = 6.0;
+			};
+			name = Debug;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		04DA00EB8A99448AEEE86A94 /* Build configuration list for PBXNativeTarget "LumaTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				6A07A459DB18752AD74A145A /* Debug */,
+				3B86AE427B76A8BE72A17C8E /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		39082DED094B543B7F177A5B /* Build configuration list for PBXNativeTarget "Luma" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				FEECD67107BB7AE74F3574C8 /* Debug */,
+				1882B0980A47A72FB926BD6B /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		DEFB5A06B29D6BCD602A2291 /* Build configuration list for PBXProject "Luma" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				6CB952023A286F13211CB884 /* Debug */,
+				C0A4C21F59ADC6DDCD811DF7 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+/* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		0DF42C96A7AC6D837700E4B3 /* XCRemoteSwiftPackageReference "mlx-swift-lm" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/ml-explore/mlx-swift-lm";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 3.31.3;
+			};
+		};
+		17D4D2C650D5991DA7920535 /* XCRemoteSwiftPackageReference "mlx-swift" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/ml-explore/mlx-swift";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 0.31.4;
+			};
+		};
+		38F98A0CBB256386AF1A82D6 /* XCRemoteSwiftPackageReference "swift-transformers" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/huggingface/swift-transformers";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 1.3.0;
+			};
+		};
+		92F19CBEABA123AEB90C82E9 /* XCRemoteSwiftPackageReference "swift-huggingface" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/huggingface/swift-huggingface";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 0.9.0;
+			};
+		};
+		F043435EC35F5DB07D556460 /* XCRemoteSwiftPackageReference "supabase-swift" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/supabase/supabase-swift";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 2.55.1;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		00C314211B52ADA869236440 /* MLXLLM */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 0DF42C96A7AC6D837700E4B3 /* XCRemoteSwiftPackageReference "mlx-swift-lm" */;
+			productName = MLXLLM;
+		};
+		14A667DA7AEE3E9B743E6B9D /* Tokenizers */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 38F98A0CBB256386AF1A82D6 /* XCRemoteSwiftPackageReference "swift-transformers" */;
+			productName = Tokenizers;
+		};
+		26BB0B3518F8B72546A2CB0B /* HuggingFace */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 92F19CBEABA123AEB90C82E9 /* XCRemoteSwiftPackageReference "swift-huggingface" */;
+			productName = HuggingFace;
+		};
+		6047C0B6B40AAB954B3FC98A /* Supabase */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = F043435EC35F5DB07D556460 /* XCRemoteSwiftPackageReference "supabase-swift" */;
+			productName = Supabase;
+		};
+		709309F7A7414259AE51EFDE /* MLX */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 17D4D2C650D5991DA7920535 /* XCRemoteSwiftPackageReference "mlx-swift" */;
+			productName = MLX;
+		};
+		9299FB136B4E9E041E0C0CF9 /* MLXLMCommon */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 0DF42C96A7AC6D837700E4B3 /* XCRemoteSwiftPackageReference "mlx-swift-lm" */;
+			productName = MLXLMCommon;
+		};
+		9C1F452AFF6154D92C1C84FE /* MLXHuggingFace */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 0DF42C96A7AC6D837700E4B3 /* XCRemoteSwiftPackageReference "mlx-swift-lm" */;
+			productName = MLXHuggingFace;
+		};
+/* End XCSwiftPackageProductDependency section */
+	};
+	rootObject = AACE5AD3943208FFB6B19277 /* Project object */;
+}

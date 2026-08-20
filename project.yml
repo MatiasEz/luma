@@ -1,0 +1,84 @@
+name: Luma
+
+options:
+  bundleIdPrefix: com.luma
+  deploymentTarget:
+    macOS: "14.0"
+  createIntermediateGroups: true
+  generateEmptyDirectories: true
+
+packages:
+  MLXSwift:
+    url: https://github.com/ml-explore/mlx-swift
+    from: 0.31.4
+  MLXSwiftLM:
+    url: https://github.com/ml-explore/mlx-swift-lm
+    from: 3.31.3
+  SwiftHuggingFace:
+    url: https://github.com/huggingface/swift-huggingface
+    from: 0.9.0
+  SwiftTransformers:
+    url: https://github.com/huggingface/swift-transformers
+    from: 1.3.0
+  Supabase:
+    url: https://github.com/supabase/supabase-swift
+    from: 2.55.1
+
+targets:
+  Luma:
+    type: application
+    platform: macOS
+    sources:
+      - path: Luma
+    dependencies:
+      - package: MLXSwift
+        product: MLX
+      - package: MLXSwiftLM
+        product: MLXLLM
+      - package: MLXSwiftLM
+        product: MLXLMCommon
+      - package: MLXSwiftLM
+        product: MLXHuggingFace
+      - package: SwiftHuggingFace
+        product: HuggingFace
+      - package: SwiftTransformers
+        product: Tokenizers
+      - package: Supabase
+        product: Supabase
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.luma.organizer
+        PRODUCT_NAME: Luma
+        MARKETING_VERSION: 0.4.0
+        CURRENT_PROJECT_VERSION: 7
+        SWIFT_VERSION: 6.0
+        MACOSX_DEPLOYMENT_TARGET: 14.0
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_CFBundleDisplayName: Luma
+        INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.productivity
+        INFOPLIST_KEY_NSHumanReadableCopyright: "Luma"
+        INFOPLIST_KEY_NSCalendarsFullAccessUsageDescription: "Luma usa tus eventos para evitar conflictos y, si activás la sincronización, agregar tareas y bloques de tu plan."
+        INFOPLIST_KEY_NSCalendarsUsageDescription: "Luma usa tus eventos para evitar conflictos con tu agenda."
+        INFOPLIST_KEY_LUMA_SUPABASE_URL: "https://otzefpzacufwyerqsfct.supabase.co"
+        INFOPLIST_KEY_LUMA_SUPABASE_PUBLISHABLE_KEY: "sb_publishable_nxXXMkg1lU5G14rkEwwELQ_JxoTGddU"
+        CODE_SIGN_ENTITLEMENTS: Luma/Luma.entitlements
+        ENABLE_APP_SANDBOX: YES
+        ENABLE_HARDENED_RUNTIME: YES
+        CODE_SIGN_STYLE: Automatic
+    scheme:
+      testTargets:
+        - LumaTests
+      gatherCoverageData: true
+
+  LumaTests:
+    type: bundle.unit-test
+    platform: macOS
+    sources:
+      - path: LumaTests
+    dependencies:
+      - target: Luma
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.luma.organizer.tests
+        SWIFT_VERSION: 6.0
+        GENERATE_INFOPLIST_FILE: YES

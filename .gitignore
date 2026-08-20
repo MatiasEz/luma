@@ -1,0 +1,20 @@
+.DS_Store
+
+# Compilaciones locales
+build/
+build-installer/
+DerivedData/
+dist/
+
+# Estado personal de Xcode
+xcuserdata/
+*.xcuserstate
+.swiftpm/
+
+# Estado local de herramientas
+supabase/.temp/
+
+# Configuración privada local
+.env
+.env.*
+!.env.example
