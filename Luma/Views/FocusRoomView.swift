@@ -224,7 +224,8 @@ struct FocusRoomView: View {
                         .font(.caption)
                         .foregroundStyle(LumaPalette.secondaryInk)
                     Button("Marcar como hecho") {
-                        selectedTask?.markCompleted()
+                        guard let task = selectedTask else { return }
+                        task.markCompleted()
                         recordedSession?.completedTask = true
                         try? modelContext.save()
                         appState.refreshPlan()

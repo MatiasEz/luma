@@ -8,6 +8,7 @@ struct AcademicTaskFields: View {
     @Binding var gradeItemID: UUID?
     @Binding var grade: Double?
     @Binding var legacyWeight: Double?
+    let isCompleted: Bool
 
     private var selectedItems: [SubjectGradeItem] {
         guard let subjectID else { return [] }
@@ -43,7 +44,8 @@ struct AcademicTaskFields: View {
     private var evaluationStatus: AcademicEvaluationStatus? {
         guard subjectID != nil else { return nil }
         guard gradeItemID != nil else { return .notEvaluable }
-        return grade == nil ? .pendingGrade : .graded
+        guard grade == nil else { return .graded }
+        return isCompleted ? .awaitingGrade : .upcomingEvaluation
     }
 
     var body: some View {
@@ -119,9 +121,7 @@ struct AcademicTaskFields: View {
                 VStack(alignment: .leading, spacing: 10) { gradeFields }
             }
 
-            Text(grade == nil
-                ? "Podés guardar la evaluación sin nota y cargarla cuando te den la calificación. No contará como cero."
-                : "La nota ya está incluida en el cálculo de la materia.")
+            Text(evaluationHelpText)
                 .font(.caption)
                 .foregroundStyle(LumaPalette.secondaryInk)
                 .fixedSize(horizontal: false, vertical: true)
@@ -145,7 +145,7 @@ struct AcademicTaskFields: View {
 
         HStack(spacing: 6) {
             TextField(
-                "Nota pendiente",
+                "Nota opcional",
                 value: $grade,
                 format: .number.precision(.fractionLength(0 ... 2))
             )
@@ -170,8 +170,19 @@ struct AcademicTaskFields: View {
     private func statusColor(_ status: AcademicEvaluationStatus) -> Color {
         switch status {
         case .notEvaluable: LumaPalette.secondaryInk
-        case .pendingGrade: LumaPalette.indigo
+        case .upcomingEvaluation: LumaPalette.indigo
+        case .awaitingGrade: LumaPalette.mustard
         case .graded: grade.map { $0 >= 6 ? LumaPalette.sage : LumaPalette.terracotta } ?? LumaPalette.sage
         }
+    }
+
+    private var evaluationHelpText: String {
+        if grade != nil {
+            return "La nota ya está incluida en el cálculo de la materia."
+        }
+        if isCompleted {
+            return "La evaluación ya está completada. Quedará esperando nota y no contará como cero."
+        }
+        return "Primero aparecerá como próxima evaluación. Al marcarla como hecha, podrás cargar la nota desde el Inbox."
     }
 }

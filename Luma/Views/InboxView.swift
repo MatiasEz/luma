@@ -13,10 +13,23 @@ struct InboxView: View {
     @State private var showCompleted = false
     @State private var editingTask: LumaTask?
 
-    private var filteredTasks: [LumaTask] {
+    private var awaitingGradeTasks: [LumaTask] {
         tasks.filter { task in
-            (showCompleted || !task.isCompleted) && (selectedArea == nil || task.area == selectedArea)
+            task.academicEvaluationStatus == .awaitingGrade
+                && (selectedArea == nil || task.area == selectedArea)
         }
+    }
+
+    private var regularTasks: [LumaTask] {
+        tasks.filter { task in
+            task.academicEvaluationStatus != .awaitingGrade
+                && (showCompleted || !task.isCompleted)
+                && (selectedArea == nil || task.area == selectedArea)
+        }
+    }
+
+    private var awaitingGradeCount: Int {
+        tasks.filter { $0.academicEvaluationStatus == .awaitingGrade }.count
     }
 
     var body: some View {
@@ -35,29 +48,9 @@ struct InboxView: View {
                 }
 
                 filters
-
-                if filteredTasks.isEmpty {
-                    EmptyStateView(
-                        symbol: "tray.fill",
-                        title: "Inbox despejado",
-                        message: "No hace falta llenar el espacio. Agregá algo cuando realmente aparezca."
-                    )
-                } else {
-                    LazyVStack(spacing: 10) {
-                        ForEach(filteredTasks) { task in
-                            InboxTaskRow(
-                                task: task,
-                                subjectName: subjectName(for: task),
-                                categoryName: categoryName(for: task),
-                                blockerNames: blockerNames(for: task),
-                                unlockedTaskName: unlockedTaskName(for: task),
-                                onToggleCompletion: { toggleCompletion(task) },
-                                onEdit: { editingTask = task },
-                                onDelete: { delete(task) }
-                            )
-                        }
-                    }
-                }
+                awaitingGradesSection
+                Divider().opacity(0.45)
+                regularTasksSection
             }
             .padding(30)
             .frame(maxWidth: 980, alignment: .leading)
@@ -72,6 +65,76 @@ struct InboxView: View {
                     .frame(width: 720, height: 690)
             }
         }
+    }
+
+    private var awaitingGradesSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            SectionTitle(
+                eyebrow: "Seguimiento académico",
+                title: "Esperando nota",
+                trailing: awaitingGradeTasks.count == 1
+                    ? "1 evaluación"
+                    : "\(awaitingGradeTasks.count) evaluaciones"
+            )
+
+            Text("Son evaluaciones que ya completaste, pero todavía no tienen calificación. No afectan tu promedio hasta que cargues la nota.")
+                .font(.subheadline)
+                .foregroundStyle(LumaPalette.secondaryInk)
+                .fixedSize(horizontal: false, vertical: true)
+
+            if awaitingGradeTasks.isEmpty {
+                Label("No hay evaluaciones esperando nota.", systemImage: "checkmark.seal")
+                    .font(.subheadline.weight(.medium))
+                    .foregroundStyle(LumaPalette.sage)
+                    .padding(15)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(LumaPalette.sage.opacity(0.07), in: RoundedRectangle(cornerRadius: 14))
+            } else {
+                LazyVStack(spacing: 10) {
+                    ForEach(awaitingGradeTasks) { task in
+                        taskRow(task)
+                    }
+                }
+            }
+        }
+    }
+
+    private var regularTasksSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            SectionTitle(
+                eyebrow: "Por hacer",
+                title: "Pendientes",
+                trailing: "\(regularTasks.count) tareas"
+            )
+
+            if regularTasks.isEmpty {
+                EmptyStateView(
+                    symbol: "tray.fill",
+                    title: "Inbox despejado",
+                    message: "No hace falta llenar el espacio. Agregá algo cuando realmente aparezca."
+                )
+            } else {
+                LazyVStack(spacing: 10) {
+                    ForEach(regularTasks) { task in
+                        taskRow(task)
+                    }
+                }
+            }
+        }
+    }
+
+    private func taskRow(_ task: LumaTask) -> some View {
+        InboxTaskRow(
+            task: task,
+            subjectName: subjectName(for: task),
+            categoryName: categoryName(for: task),
+            blockerNames: blockerNames(for: task),
+            unlockedTaskName: unlockedTaskName(for: task),
+            onToggleCompletion: { toggleCompletion(task) },
+            onSaveGrade: { saveGrade($0, for: task) },
+            onEdit: { editingTask = task },
+            onDelete: { delete(task) }
+        )
     }
 
     private var filters: some View {
@@ -99,8 +162,14 @@ struct InboxView: View {
         SectionTitle(
             eyebrow: "Todo entra acá",
             title: "Inbox",
-            trailing: "\(tasks.filter { !$0.isCompleted }.count) pendientes"
+            trailing: inboxCountText
         )
+    }
+
+    private var inboxCountText: String {
+        let open = tasks.filter { !$0.isCompleted }.count
+        guard awaitingGradeCount > 0 else { return "\(open) pendientes" }
+        return "\(open) pendientes · \(awaitingGradeCount) esperando nota"
     }
 
     private var addButton: some View {
@@ -134,6 +203,13 @@ struct InboxView: View {
         appState.refreshPlan()
     }
 
+    private func saveGrade(_ grade: Double, for task: LumaTask) {
+        guard (0 ... 10).contains(grade) else { return }
+        task.grade = grade
+        try? modelContext.save()
+        appState.refreshPlan()
+    }
+
     private func blockerNames(for task: LumaTask) -> [String] {
         TaskDependencyResolver.blockers(for: task.id, in: tasks).map(\.title)
     }
@@ -161,34 +237,106 @@ private struct InboxTaskRow: View {
     let blockerNames: [String]
     let unlockedTaskName: String?
     let onToggleCompletion: () -> Void
+    let onSaveGrade: (Double) -> Void
     let onEdit: () -> Void
     let onDelete: () -> Void
 
-    var body: some View {
-        ViewThatFits(in: .horizontal) {
-            HStack(spacing: 14) {
-                completionButton
-                taskInformation
-                Spacer(minLength: 10)
-                rowActions
-            }
+    @State private var isGradeEntryExpanded = false
+    @State private var grade: Double?
 
-            VStack(alignment: .leading, spacing: 12) {
-                HStack(alignment: .top, spacing: 12) {
+    private var isFinishedForDisplay: Bool {
+        task.isCompleted && task.academicEvaluationStatus != .awaitingGrade
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 14) {
                     completionButton
-                    Text(task.title)
-                        .font(.headline)
-                        .foregroundStyle(LumaPalette.ink)
-                        .strikethrough(task.isCompleted)
-                        .fixedSize(horizontal: false, vertical: true)
-                    Spacer(minLength: 8)
+                    taskInformation
+                    Spacer(minLength: 10)
                     rowActions
                 }
-                metadata(vertical: true)
+
+                VStack(alignment: .leading, spacing: 12) {
+                    HStack(alignment: .top, spacing: 12) {
+                        completionButton
+                        Text(task.title)
+                            .font(.headline)
+                            .foregroundStyle(LumaPalette.ink)
+                            .strikethrough(isFinishedForDisplay)
+                            .fixedSize(horizontal: false, vertical: true)
+                        Spacer(minLength: 8)
+                        rowActions
+                    }
+                    metadata(vertical: true)
+                }
+            }
+
+            if isGradeEntryExpanded {
+                Divider()
+                    .opacity(0.45)
+                    .padding(.vertical, 13)
+                inlineGradeEntry
             }
         }
-        .opacity(task.isCompleted ? 0.56 : 1)
+        .opacity(isFinishedForDisplay ? 0.56 : 1)
         .lumaCard(padding: 14)
+    }
+
+    private var inlineGradeEntry: some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 12) {
+                gradeEntryExplanation
+                Spacer(minLength: 12)
+                gradeEntryControls
+            }
+            VStack(alignment: .leading, spacing: 12) {
+                gradeEntryExplanation
+                gradeEntryControls
+            }
+        }
+    }
+
+    private var gradeEntryExplanation: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text("Cargar calificación")
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(LumaPalette.ink)
+            Text("Se actualizará automáticamente el resumen de la materia.")
+                .font(.caption)
+                .foregroundStyle(LumaPalette.secondaryInk)
+        }
+    }
+
+    private var gradeEntryControls: some View {
+        HStack(spacing: 8) {
+            TextField(
+                "Ej. 8,5",
+                value: $grade,
+                format: .number.precision(.fractionLength(0 ... 2))
+            )
+            .textFieldStyle(.roundedBorder)
+            .frame(width: 100)
+            Text("/ 10")
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(LumaPalette.secondaryInk)
+            Button("Cancelar") {
+                grade = nil
+                isGradeEntryExpanded = false
+            }
+            .buttonStyle(.borderless)
+            Button("Guardar") {
+                guard let grade, (0 ... 10).contains(grade) else { return }
+                onSaveGrade(grade)
+                self.grade = nil
+                isGradeEntryExpanded = false
+            }
+            .buttonStyle(.borderedProminent)
+            .tint(LumaPalette.indigo)
+            .disabled(grade.map { !(0 ... 10).contains($0) } ?? true)
+            .keyboardShortcut(.defaultAction)
+        }
     }
 
     private var completionButton: some View {
@@ -205,7 +353,7 @@ private struct InboxTaskRow: View {
             Text(task.title)
                 .font(.headline)
                 .foregroundStyle(LumaPalette.ink)
-                .strikethrough(task.isCompleted)
+                .strikethrough(isFinishedForDisplay)
                 .fixedSize(horizontal: false, vertical: true)
             metadata(vertical: false)
         }
@@ -245,9 +393,12 @@ private struct InboxTaskRow: View {
                 systemImage: "checkmark.seal.fill"
             )
             .foregroundStyle(grade >= 6 ? LumaPalette.sage : LumaPalette.terracotta)
-        } else if task.academicEvaluationStatus == .pendingGrade {
-            Label("Nota pendiente", systemImage: "clock.badge.questionmark")
+        } else if task.academicEvaluationStatus == .upcomingEvaluation {
+            Label("Próxima evaluación", systemImage: "calendar.badge.clock")
                 .foregroundStyle(LumaPalette.indigo)
+        } else if task.academicEvaluationStatus == .awaitingGrade {
+            Label("Esperando nota", systemImage: "clock.badge.questionmark")
+                .foregroundStyle(LumaPalette.mustard)
         } else if task.academicEvaluationStatus == .notEvaluable {
             Label("No evaluable", systemImage: "book.closed")
         }
@@ -263,6 +414,14 @@ private struct InboxTaskRow: View {
 
     private var rowActions: some View {
         HStack(spacing: 6) {
+            if task.academicEvaluationStatus == .awaitingGrade {
+                Button("Cargar nota", systemImage: "checkmark.seal") {
+                    isGradeEntryExpanded = true
+                }
+                    .buttonStyle(.borderedProminent)
+                    .tint(LumaPalette.indigo)
+            }
+
             Button(action: onEdit) {
                 Image(systemName: "pencil")
                     .frame(width: 28, height: 28)
@@ -273,17 +432,21 @@ private struct InboxTaskRow: View {
 
             Menu {
                 Button("Editar", systemImage: "pencil", action: onEdit)
-                if task.academicEvaluationStatus == .pendingGrade {
-                    Button("Cargar nota", systemImage: "checkmark.seal", action: onEdit)
+                if task.academicEvaluationStatus == .awaitingGrade {
+                    Button("Cargar nota", systemImage: "checkmark.seal") {
+                        isGradeEntryExpanded = true
+                    }
                 }
                 Divider()
                 Button(
                     task.isCompleted ? "Volver a pendientes" : "Marcar como hecha",
                     action: onToggleCompletion
                 )
-                Button("Postergar un día") {
-                    task.deadline = Calendar.current.date(byAdding: .day, value: 1, to: task.deadline ?? .now)
-                    task.postponementCount += 1
+                if !task.isCompleted {
+                    Button("Postergar un día") {
+                        task.deadline = Calendar.current.date(byAdding: .day, value: 1, to: task.deadline ?? .now)
+                        task.postponementCount += 1
+                    }
                 }
                 Divider()
                 Button("Eliminar", role: .destructive, action: onDelete)

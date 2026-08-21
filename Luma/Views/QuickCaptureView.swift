@@ -142,7 +142,8 @@ struct QuickCaptureView: View {
                     subjectID: $draft.academicSubjectID,
                     gradeItemID: $draft.subjectGradeItemID,
                     grade: $draft.grade,
-                    legacyWeight: $draft.academicWeight
+                    legacyWeight: $draft.academicWeight,
+                    isCompleted: false
                 )
             }
 

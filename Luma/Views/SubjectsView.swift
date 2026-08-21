@@ -11,6 +11,7 @@ struct SubjectsView: View {
     @State private var editingSubject: AcademicSubject?
     @State private var subjectToArchive: AcademicSubject?
     @State private var gradeDetailSubject: AcademicSubject?
+    @State private var quickGradeEntryPresented = false
 
     private var activeSubjects: [AcademicSubject] {
         subjects.filter { !$0.isArchived }
@@ -20,6 +21,16 @@ struct SubjectsView: View {
         gradeItems.filter { !$0.isArchived }
     }
 
+    private var gradeEntryTasks: [LumaTask] {
+        let subjectIDs = Set(activeSubjects.map(\.id))
+        let itemIDs = Set(activeItems.map(\.id))
+        return tasks.filter {
+            $0.academicSubjectID.map(subjectIDs.contains) == true
+                && $0.subjectGradeItemID.map(itemIDs.contains) == true
+                && ($0.isCompleted || $0.grade != nil)
+        }
+    }
+
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 24) {
@@ -27,11 +38,11 @@ struct SubjectsView: View {
                     HStack(alignment: .bottom) {
                         heading
                         Spacer(minLength: 16)
-                        addButton
+                        headerActions
                     }
                     VStack(alignment: .leading, spacing: 12) {
                         heading
-                        addButton
+                        headerActions
                     }
                 }
 
@@ -44,7 +55,7 @@ struct SubjectsView: View {
                         message: "Creá una materia y anotá cuánto vale cada examen, tarea, asistencia o proyecto."
                     )
                 } else {
-                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 280), spacing: 14)], spacing: 14) {
+                    LazyVStack(spacing: 14) {
                         ForEach(activeSubjects) { subject in
                             SubjectCard(
                                 subject: subject,
@@ -59,7 +70,7 @@ struct SubjectsView: View {
                 }
             }
             .padding(30)
-            .frame(maxWidth: 980, alignment: .leading)
+            .frame(maxWidth: 1040, alignment: .leading)
         }
         .navigationTitle("Materias")
         .sheet(isPresented: $editorPresented, onDismiss: { editingSubject = nil }) {
@@ -73,6 +84,13 @@ struct SubjectsView: View {
                 subject: subject,
                 items: items(for: subject),
                 tasks: tasks.filter { $0.academicSubjectID == subject.id }
+            )
+        }
+        .sheet(isPresented: $quickGradeEntryPresented) {
+            QuickGradeEntryView(
+                subjects: activeSubjects,
+                items: activeItems,
+                tasks: gradeEntryTasks
             )
         }
         .alert(
@@ -99,14 +117,24 @@ struct SubjectsView: View {
         )
     }
 
-    private var addButton: some View {
-        Button {
-            presentEditor(for: nil)
-        } label: {
-            Label("Agregar materia", systemImage: "plus")
+    private var headerActions: some View {
+        HStack(spacing: 9) {
+            Button {
+                quickGradeEntryPresented = true
+            } label: {
+                Label("Cargar notas", systemImage: "square.and.pencil")
+            }
+            .buttonStyle(.bordered)
+            .disabled(gradeEntryTasks.isEmpty)
+
+            Button {
+                presentEditor(for: nil)
+            } label: {
+                Label("Agregar materia", systemImage: "plus")
+            }
+            .buttonStyle(.borderedProminent)
+            .tint(LumaPalette.indigo)
         }
-        .buttonStyle(.borderedProminent)
-        .tint(LumaPalette.indigo)
     }
 
     private var explanationCard: some View {
@@ -169,33 +197,75 @@ private struct SubjectCard: View {
     }
 
     private var progressColor: Color {
-        total > 100 ? LumaPalette.terracotta : (total == 100 ? LumaPalette.sage : LumaPalette.indigo)
+        total > 100.001
+            ? LumaPalette.terracotta
+            : (abs(total - 100) < 0.001 ? LumaPalette.sage : LumaPalette.indigo)
     }
 
     private var gradeSummary: SubjectGradeSummary {
         SubjectGradeCalculator.makeSummary(items: items, tasks: tasks)
     }
 
+    private var openTaskCount: Int {
+        tasks.filter { !$0.isCompleted }.count
+    }
+
     var body: some View {
-        VStack(alignment: .leading, spacing: 15) {
+        ViewThatFits(in: .horizontal) {
+            HStack(alignment: .top, spacing: 20) {
+                subjectIdentity
+                    .frame(width: 250, alignment: .topLeading)
+
+                Divider()
+                    .frame(height: 142)
+
+                categoryOverview
+                    .frame(maxWidth: .infinity, alignment: .topLeading)
+
+                Divider()
+                    .frame(height: 142)
+
+                gradeOverview
+                    .frame(width: 240, alignment: .topLeading)
+            }
+            .frame(minWidth: 720, alignment: .leading)
+
+            VStack(alignment: .leading, spacing: 16) {
+                subjectIdentity
+                Divider().opacity(0.55)
+                categoryOverview
+                Divider().opacity(0.55)
+                gradeOverview
+            }
+        }
+        .lumaCard(padding: 18)
+    }
+
+    private var subjectIdentity: some View {
+        VStack(alignment: .leading, spacing: 14) {
             HStack(alignment: .top, spacing: 12) {
                 Image(systemName: "book.closed.fill")
                     .font(.headline)
                     .foregroundStyle(LumaPalette.indigo)
-                    .frame(width: 38, height: 38)
+                    .frame(width: 40, height: 40)
                     .background(LumaPalette.indigo.opacity(0.11), in: Circle())
-                VStack(alignment: .leading, spacing: 3) {
+
+                VStack(alignment: .leading, spacing: 4) {
                     Text(subject.name)
                         .font(.title3.weight(.semibold))
                         .foregroundStyle(LumaPalette.ink)
+                        .lineLimit(2)
                         .fixedSize(horizontal: false, vertical: true)
+
                     if let target = subject.targetGrade {
-                        Label("Objetivo \(grade(target)) / 10", systemImage: "target")
-                            .font(.caption2.weight(.semibold))
+                        Label("Objetivo \(grade(target))", systemImage: "target")
+                            .font(.caption.weight(.semibold))
                             .foregroundStyle(LumaPalette.sage)
                     }
                 }
-                Spacer(minLength: 8)
+
+                Spacer(minLength: 4)
+
                 Menu {
                     Button("Editar", systemImage: "pencil", action: onEdit)
                     Divider()
@@ -208,201 +278,164 @@ private struct SubjectCard: View {
                 .fixedSize()
             }
 
+            HStack(spacing: 14) {
+                Label(taskCountText, systemImage: "checklist")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(LumaPalette.secondaryInk)
+
+                if gradeSummary.awaitingGradeTaskCount > 0 {
+                    Label("\(gradeSummary.awaitingGradeTaskCount) espera nota", systemImage: "clock")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(LumaPalette.mustard)
+                }
+            }
+        }
+    }
+
+    private var categoryOverview: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("PONDERACIÓN")
+                .font(.caption2.weight(.bold))
+                .tracking(0.8)
+                .foregroundStyle(LumaPalette.secondaryInk)
+
             if items.isEmpty {
-                Text("Sin ítems todavía")
+                Text("Todavía no configuraste categorías.")
                     .font(.subheadline)
                     .foregroundStyle(LumaPalette.secondaryInk)
             } else {
-                VStack(spacing: 9) {
-                    ForEach(items) { item in
-                        HStack(spacing: 10) {
-                            Circle()
-                                .fill(LumaPalette.lavender)
-                                .frame(width: 7, height: 7)
-                            Text(item.title)
-                                .font(.subheadline.weight(.medium))
-                                .foregroundStyle(LumaPalette.ink)
-                                .fixedSize(horizontal: false, vertical: true)
-                            Spacer(minLength: 8)
-                            Text("\(percentage(item.weightPercent))%")
-                                .font(.subheadline.weight(.semibold).monospacedDigit())
-                                .foregroundStyle(LumaPalette.indigo)
-                        }
+                ForEach(Array(items.prefix(4))) { item in
+                    HStack(spacing: 9) {
+                        Circle()
+                            .fill(LumaPalette.lavender)
+                            .frame(width: 7, height: 7)
+                        Text(item.title)
+                            .font(.subheadline.weight(.medium))
+                            .foregroundStyle(LumaPalette.ink)
+                            .lineLimit(1)
+                        Spacer(minLength: 8)
+                        Text("\(percentage(item.weightPercent))%")
+                            .font(.subheadline.weight(.semibold).monospacedDigit())
+                            .foregroundStyle(LumaPalette.indigo)
                     }
+                }
+
+                if items.count > 4 {
+                    Text("Y \(items.count - 4) categorías más")
+                        .font(.caption)
+                        .foregroundStyle(LumaPalette.secondaryInk)
                 }
             }
 
-            if !items.isEmpty {
-                Divider().opacity(0.55)
-                gradeOverview
-            }
+            ProgressView(value: min(total, 100), total: 100)
+                .tint(progressColor)
 
-            if !tasks.isEmpty {
-                Divider().opacity(0.55)
-
-                VStack(alignment: .leading, spacing: 9) {
-                    HStack {
-                        Text("TAREAS ASIGNADAS")
-                            .font(.caption2.weight(.bold))
-                            .tracking(0.8)
-                            .foregroundStyle(LumaPalette.sage)
-                        Spacer()
-                        Text("\(tasks.count)")
-                            .font(.caption.weight(.semibold).monospacedDigit())
-                            .foregroundStyle(LumaPalette.secondaryInk)
-                    }
-
-                    ForEach(Array(tasks.prefix(4))) { task in
-                        HStack(alignment: .firstTextBaseline, spacing: 8) {
-                            Image(systemName: task.isCompleted ? "checkmark.circle.fill" : "circle")
-                                .foregroundStyle(task.isCompleted ? LumaPalette.sage : LumaPalette.secondaryInk)
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(task.title)
-                                    .font(.caption.weight(.semibold))
-                                    .foregroundStyle(LumaPalette.ink)
-                                    .lineLimit(1)
-                                if let category = categoryName(for: task) {
-                                    Text(category)
-                                        .font(.caption2)
-                                        .foregroundStyle(LumaPalette.secondaryInk)
-                                }
-                            }
-                            Spacer(minLength: 6)
-                            Text(gradeLabel(for: task))
-                                .font(.caption.weight(.semibold).monospacedDigit())
-                                .foregroundStyle(task.grade.map { $0 >= 6 } == true ? LumaPalette.sage : LumaPalette.secondaryInk)
-                        }
-                    }
-
-                    if tasks.count > 4 {
-                        Text("Y \(tasks.count - 4) más en el Inbox")
-                            .font(.caption2)
-                            .foregroundStyle(LumaPalette.secondaryInk)
-                    }
-                }
-            }
-
-            Divider().opacity(0.55)
-
-            VStack(alignment: .leading, spacing: 8) {
-                ProgressView(value: min(total, 100), total: 100)
-                    .tint(progressColor)
-                HStack {
-                    Text("Total: \(percentage(total))%")
-                        .font(.caption.weight(.semibold).monospacedDigit())
-                        .foregroundStyle(LumaPalette.ink)
-                    Spacer()
-                    Text(statusText)
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(progressColor)
-                }
-            }
+            Text(configurationText)
+                .font(.caption.weight(.semibold).monospacedDigit())
+                .foregroundStyle(progressColor)
         }
-        .frame(maxWidth: .infinity, alignment: .topLeading)
-        .lumaCard(padding: 16)
     }
 
     private var gradeOverview: some View {
-        Button(action: onShowGradeDetail) {
-            VStack(alignment: .leading, spacing: 10) {
-                HStack {
-                    Text("NOTA DE LA MATERIA")
-                        .font(.caption2.weight(.bold))
-                        .tracking(0.8)
-                        .foregroundStyle(LumaPalette.indigo)
-                    Spacer()
+        VStack(alignment: .leading, spacing: 9) {
+            Text("NOTA ACTUAL")
+                .font(.caption2.weight(.bold))
+                .tracking(0.8)
+                .foregroundStyle(LumaPalette.secondaryInk)
+
+            if let currentGrade = gradeSummary.currentGrade {
+                Text("\(grade(currentGrade)) / 10")
+                    .font(.title2.weight(.bold).monospacedDigit())
+                    .foregroundStyle(LumaPalette.ink)
+                Text("Promedio de lo ya calificado")
+                    .font(.caption)
+                    .foregroundStyle(LumaPalette.secondaryInk)
+                Text("Aporta \(grade(gradeSummary.weightedContribution)) / 10 a la nota final")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(LumaPalette.sage)
+                    .fixedSize(horizontal: false, vertical: true)
+            } else {
+                Text("Sin notas")
+                    .font(.title3.weight(.semibold))
+                    .foregroundStyle(LumaPalette.ink)
+                Text("Cargá una calificación para empezar.")
+                    .font(.caption)
+                    .foregroundStyle(LumaPalette.secondaryInk)
+            }
+
+            if let objectiveSummary {
+                Label(objectiveSummary, systemImage: objectiveSymbol)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(objectiveColor)
+                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            Button(action: onShowGradeDetail) {
+                HStack(spacing: 6) {
                     Text("Ver detalle")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(LumaPalette.indigo)
                     Image(systemName: "chevron.right")
                         .font(.caption2.weight(.bold))
-                        .foregroundStyle(LumaPalette.indigo)
                 }
-
-                if let currentGrade = gradeSummary.currentGrade {
-                    HStack(alignment: .firstTextBaseline, spacing: 14) {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("Nota actual")
-                                .font(.caption2)
-                                .foregroundStyle(LumaPalette.secondaryInk)
-                            Text("\(grade(currentGrade)) / 10")
-                                .font(.title3.weight(.bold).monospacedDigit())
-                                .foregroundStyle(LumaPalette.ink)
-                        }
-                        Spacer()
-                        VStack(alignment: .trailing, spacing: 2) {
-                            Text("Peso con notas")
-                                .font(.caption2)
-                                .foregroundStyle(LumaPalette.secondaryInk)
-                            Text("\(percentage(gradeSummary.gradedWeight))%")
-                                .font(.subheadline.weight(.bold).monospacedDigit())
-                                .foregroundStyle(LumaPalette.sage)
-                        }
-                    }
-                    Text("Aporte ponderado actual: \(grade(gradeSummary.weightedContribution)) / 10")
-                        .font(.caption)
-                        .foregroundStyle(LumaPalette.secondaryInk)
-                } else {
-                    Text("Todavía no hay notas cargadas")
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(LumaPalette.ink)
-                    Text("Cuando califiques una tarea, vas a ver acá la nota actual y su aporte a la final.")
-                        .font(.caption)
-                        .foregroundStyle(LumaPalette.secondaryInk)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-
-                if gradeSummary.pendingGradeTaskCount > 0 {
-                    Label(
-                        gradeSummary.pendingGradeTaskCount == 1
-                            ? "1 evaluación espera nota"
-                            : "\(gradeSummary.pendingGradeTaskCount) evaluaciones esperan nota",
-                        systemImage: "clock.badge.questionmark"
-                    )
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(LumaPalette.indigo)
-                }
-
-                if let objectiveText {
-                    Text(objectiveText)
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(objectiveColor)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(LumaPalette.indigo)
             }
-            .padding(12)
-            .background(LumaPalette.indigo.opacity(0.055), in: RoundedRectangle(cornerRadius: 13))
+            .buttonStyle(.plain)
         }
-        .buttonStyle(.plain)
     }
 
-    private var statusText: String {
-        if total > 100 { return "Excede \(percentage(total - 100))%" }
-        if total == 100 { return "Completo" }
-        return "Falta \(percentage(remaining))%"
+    private var taskCountText: String {
+        if tasks.isEmpty { return "Sin tareas" }
+        if openTaskCount == 0 { return "Todo al día" }
+        return openTaskCount == 1 ? "1 pendiente" : "\(openTaskCount) pendientes"
     }
 
-    private var objectiveText: String? {
+    private var configurationText: String {
+        if total > 100.001 { return "Excede por \(percentage(total - 100))%" }
+        if abs(total - 100) < 0.001 { return "100% configurado" }
+        return "\(percentage(total))% configurado · falta \(percentage(remaining))%"
+    }
+
+    private var objectiveSummary: String? {
         guard let target = subject.targetGrade else { return nil }
-        if let current = gradeSummary.currentGrade, current >= target {
-            return "Vas por encima del objetivo de \(grade(target))."
+
+        if gradeSummary.pendingGradeTaskCount > 0,
+           let required = gradeSummary.requiredAverage(for: target)
+        {
+            if required > 10 { return "Objetivo en riesgo" }
+            if required <= 0 { return "Objetivo asegurado" }
+            return "Necesitás \(grade(required)) en pendientes"
         }
-        guard let required = gradeSummary.requiredAverage(for: target) else {
-            return "Objetivo: \(grade(target)). Completá categorías y evaluaciones para calcular qué necesitás."
+
+        guard let current = gradeSummary.currentGrade else {
+            return "Objetivo \(grade(target)) aún sin medir"
         }
-        if required > 10 {
-            return "Con las evaluaciones cargadas, el objetivo de \(grade(target)) ya no es alcanzable."
+        return current >= target ? "Objetivo alcanzado" : "A \(grade(target - current)) del objetivo"
+    }
+
+    private var objectiveSymbol: String {
+        guard let target = subject.targetGrade else { return "target" }
+        if let required = gradeSummary.requiredAverage(for: target), required > 10 {
+            return "exclamationmark.triangle.fill"
         }
-        if required <= 0 {
-            return "El objetivo de \(grade(target)) ya está asegurado."
+        if let current = gradeSummary.currentGrade, current >= target,
+           gradeSummary.pendingGradeTaskCount == 0
+        {
+            return "checkmark.seal.fill"
         }
-        return "Necesitás aproximadamente \(grade(required)) en lo pendiente."
+        return "target"
     }
 
     private var objectiveColor: Color {
         guard let target = subject.targetGrade else { return LumaPalette.secondaryInk }
-        if let current = gradeSummary.currentGrade, current >= target { return LumaPalette.sage }
-        if let required = gradeSummary.requiredAverage(for: target), required > 10 { return LumaPalette.terracotta }
+        if let required = gradeSummary.requiredAverage(for: target), required > 10 {
+            return LumaPalette.terracotta
+        }
+        if let current = gradeSummary.currentGrade, current >= target,
+           gradeSummary.pendingGradeTaskCount == 0
+        {
+            return LumaPalette.sage
+        }
         return LumaPalette.indigo
     }
 
@@ -414,21 +447,6 @@ private struct SubjectCard: View {
         value.formatted(.number.precision(.fractionLength(0 ... 2)))
     }
 
-    private func categoryName(for task: LumaTask) -> String? {
-        guard let id = task.subjectGradeItemID else { return nil }
-        return items.first { $0.id == id }?.title
-    }
-
-    private func gradeLabel(for task: LumaTask) -> String {
-        switch task.academicEvaluationStatus {
-        case .graded:
-            guard let grade = task.grade else { return "Calificada" }
-            return "\(grade.formatted(.number.precision(.fractionLength(0 ... 2)))) / 10"
-        case .pendingGrade: return "Pendiente"
-        case .notEvaluable: return "No evaluable"
-        case nil: return "Sin materia"
-        }
-    }
 }
 
 private struct SubjectGradeDetailView: View {
@@ -439,9 +457,14 @@ private struct SubjectGradeDetailView: View {
     let tasks: [LumaTask]
 
     @State private var simulatorPresented = false
+    @State private var quickGradeEntryPresented = false
 
     private var summary: SubjectGradeSummary {
         SubjectGradeCalculator.makeSummary(items: items, tasks: tasks)
+    }
+
+    private var gradeEntryTasks: [LumaTask] {
+        tasks.filter { $0.subjectGradeItemID != nil && ($0.isCompleted || $0.grade != nil) }
     }
 
     var body: some View {
@@ -457,7 +480,18 @@ private struct SubjectGradeDetailView: View {
                         .foregroundStyle(LumaPalette.ink)
                 }
                 Spacer()
-                if !tasks.filter({ $0.academicEvaluationStatus == .pendingGrade }).isEmpty {
+                if !gradeEntryTasks.isEmpty {
+                    Button {
+                        quickGradeEntryPresented = true
+                    } label: {
+                        Label("Cargar notas", systemImage: "square.and.pencil")
+                    }
+                    .buttonStyle(.bordered)
+                }
+                if tasks.contains(where: {
+                    $0.academicEvaluationStatus == .upcomingEvaluation
+                        || $0.academicEvaluationStatus == .awaitingGrade
+                }) {
                     Button {
                         simulatorPresented = true
                     } label: {
@@ -510,47 +544,75 @@ private struct SubjectGradeDetailView: View {
         .sheet(isPresented: $simulatorPresented) {
             GradeSimulatorView(subject: subject, items: items, tasks: tasks)
         }
+        .sheet(isPresented: $quickGradeEntryPresented) {
+            QuickGradeEntryView(subjects: [subject], items: items, tasks: gradeEntryTasks)
+        }
     }
 
     private var gradeSummaryCard: some View {
         VStack(alignment: .leading, spacing: 15) {
-            HStack(spacing: 12) {
-                metric(
-                    title: "Nota actual",
-                    value: summary.currentGrade.map { "\(grade($0)) / 10" } ?? "Sin notas",
-                    detail: "Sobre las categorías calificadas",
-                    color: LumaPalette.indigo
-                )
-                metric(
-                    title: "Aporte actual",
-                    value: "\(grade(summary.weightedContribution)) / 10",
-                    detail: "Aplicando las ponderaciones",
-                    color: LumaPalette.sage
-                )
-                metric(
-                    title: "Peso con notas",
-                    value: "\(percentage(summary.gradedWeight))%",
-                    detail: summary.gradedTaskCount == 1
-                        ? "1 nota cargada"
-                        : "\(summary.gradedTaskCount) notas cargadas",
-                    color: LumaPalette.lavender
-                )
+            HStack(alignment: .top, spacing: 20) {
+                VStack(alignment: .leading, spacing: 5) {
+                    Text("RENDIMIENTO ACTUAL")
+                        .font(.caption2.weight(.bold))
+                        .tracking(0.8)
+                        .foregroundStyle(LumaPalette.secondaryInk)
+                    Text(summary.currentGrade.map { "\(grade($0)) / 10" } ?? "Sin notas")
+                        .font(.system(.largeTitle, design: .rounded, weight: .bold).monospacedDigit())
+                        .foregroundStyle(LumaPalette.ink)
+                    Text(summary.gradedTaskCount == 1
+                        ? "Calculado con 1 calificación"
+                        : "Calculado con \(summary.gradedTaskCount) calificaciones")
+                        .font(.caption)
+                        .foregroundStyle(LumaPalette.secondaryInk)
+                }
+
+                Spacer(minLength: 16)
+
+                if let target = subject.targetGrade {
+                    VStack(alignment: .trailing, spacing: 5) {
+                        Label("Objetivo", systemImage: "target")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(LumaPalette.sage)
+                        Text("\(grade(target)) / 10")
+                            .font(.title2.weight(.bold).monospacedDigit())
+                            .foregroundStyle(LumaPalette.ink)
+                        Text(targetDistanceText(target))
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(targetDistanceColor(target))
+                    }
+                }
             }
 
-            Text("La nota actual considera solo las categorías que ya tienen calificaciones. El aporte actual muestra cuánto suman hoy esas notas dentro del resultado final.")
+            if let currentGrade = summary.currentGrade {
+                ProgressView(value: min(max(currentGrade, 0), 10), total: 10)
+                    .tint(LumaPalette.indigo)
+            }
+
+            Text("El rendimiento actual promedia únicamente lo que ya fue calificado. Las evaluaciones sin nota no se cuentan como cero.")
                 .font(.caption)
                 .foregroundStyle(LumaPalette.secondaryInk)
                 .fixedSize(horizontal: false, vertical: true)
 
-            if summary.pendingGradeTaskCount > 0 {
-                Label(
-                    summary.pendingGradeTaskCount == 1
-                        ? "1 evaluación tiene la nota pendiente y no se cuenta como cero."
-                        : "\(summary.pendingGradeTaskCount) evaluaciones tienen la nota pendiente y no se cuentan como cero.",
-                    systemImage: "clock.badge.questionmark"
+            HStack(spacing: 12) {
+                metric(
+                    title: "Aporte confirmado",
+                    value: "\(grade(summary.weightedContribution)) / 10",
+                    detail: "Solo lo que ya fue calificado",
+                    color: LumaPalette.sage
                 )
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(LumaPalette.indigo)
+                metric(
+                    title: "Próximas",
+                    value: "\(summary.upcomingEvaluationTaskCount)",
+                    detail: "Todavía no realizadas",
+                    color: LumaPalette.indigo
+                )
+                metric(
+                    title: "Esperando nota",
+                    value: "\(summary.awaitingGradeTaskCount)",
+                    detail: "Ya fueron completadas",
+                    color: LumaPalette.mustard
+                )
             }
 
             if summary.nonEvaluableTaskCount > 0 {
@@ -562,6 +624,17 @@ private struct SubjectGradeDetailView: View {
             }
         }
         .lumaCard(padding: 16)
+    }
+
+    private func targetDistanceText(_ target: Double) -> String {
+        guard let current = summary.currentGrade else { return "Todavía sin medir" }
+        if current >= target { return "Hoy estás sobre el objetivo" }
+        return "A \(grade(target - current)) puntos"
+    }
+
+    private func targetDistanceColor(_ target: Double) -> Color {
+        guard let current = summary.currentGrade else { return LumaPalette.secondaryInk }
+        return current >= target ? LumaPalette.sage : LumaPalette.terracotta
     }
 
     private func metric(
@@ -599,6 +672,9 @@ private struct SubjectGradeDetailView: View {
                 Text(category.title)
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(LumaPalette.ink)
+                Text("Pesa \(percentage(category.weightPercent))% de la nota final")
+                    .font(.caption2.weight(.medium).monospacedDigit())
+                    .foregroundStyle(LumaPalette.indigo)
                 Text(categoryTaskDescription(category))
                     .font(.caption2)
                     .foregroundStyle(LumaPalette.secondaryInk)
@@ -607,12 +683,12 @@ private struct SubjectGradeDetailView: View {
             Spacer(minLength: 12)
 
             VStack(alignment: .trailing, spacing: 3) {
-                Text("Vale \(percentage(category.weightPercent))%")
-                    .font(.caption.weight(.semibold).monospacedDigit())
-                    .foregroundStyle(LumaPalette.indigo)
                 if let average = category.averageGrade {
-                    Text("Promedio \(grade(average)) · aporta \(grade(category.weightedContribution))")
-                        .font(.caption2.weight(.medium).monospacedDigit())
+                    Text("Promedio \(grade(average)) / 10")
+                        .font(.subheadline.weight(.semibold).monospacedDigit())
+                        .foregroundStyle(LumaPalette.ink)
+                    Text("Aporta \(grade(category.weightedContribution)) de \(grade(category.weightPercent / 10)) puntos")
+                        .font(.caption2.weight(.semibold).monospacedDigit())
                         .foregroundStyle(LumaPalette.sage)
                 } else {
                     Text("Sin notas")
@@ -677,7 +753,7 @@ private struct SubjectGradeDetailView: View {
             }
 
             if summary.configuredWithoutGradesWeight > 0 {
-                Text("Categorías todavía sin notas: \(percentage(summary.configuredWithoutGradesWeight))% de la materia.")
+                Text("Peso configurado todavía sin calificar: \(percentage(summary.configuredWithoutGradesWeight))% de la materia.")
                     .font(.caption)
                     .foregroundStyle(LumaPalette.secondaryInk)
             }
@@ -693,12 +769,18 @@ private struct SubjectGradeDetailView: View {
         let graded = category.gradedTaskCount == 1
             ? "1 calificada"
             : "\(category.gradedTaskCount) calificadas"
-        let pending = category.pendingGradeTaskCount == 1
-            ? "1 pendiente"
-            : "\(category.pendingGradeTaskCount) pendientes"
-        return category.pendingGradeTaskCount > 0
-            ? "\(assigned) · \(graded) · \(pending)"
-            : "\(assigned) · \(graded)"
+        var parts = [assigned, graded]
+        if category.upcomingEvaluationTaskCount > 0 {
+            parts.append(category.upcomingEvaluationTaskCount == 1
+                ? "1 próxima"
+                : "\(category.upcomingEvaluationTaskCount) próximas")
+        }
+        if category.awaitingGradeTaskCount > 0 {
+            parts.append(category.awaitingGradeTaskCount == 1
+                ? "1 esperando nota"
+                : "\(category.awaitingGradeTaskCount) esperando nota")
+        }
+        return parts.joined(separator: " · ")
     }
 
     private func percentage(_ value: Double) -> String {
@@ -707,6 +789,261 @@ private struct SubjectGradeDetailView: View {
 
     private func grade(_ value: Double) -> String {
         value.formatted(.number.precision(.fractionLength(0 ... 2)))
+    }
+}
+
+private struct QuickGradeEntryView: View {
+    @Environment(\.dismiss) private var dismiss
+    @Environment(\.modelContext) private var modelContext
+    @Environment(AppState.self) private var appState
+
+    let subjects: [AcademicSubject]
+    let items: [SubjectGradeItem]
+    let tasks: [LumaTask]
+
+    @State private var selectedSubjectID: UUID?
+    @State private var gradeTexts: [UUID: String]
+
+    init(subjects: [AcademicSubject], items: [SubjectGradeItem], tasks: [LumaTask]) {
+        self.subjects = subjects
+        self.items = items
+        self.tasks = tasks
+        _selectedSubjectID = State(initialValue: subjects.count == 1 ? subjects.first?.id : nil)
+        _gradeTexts = State(initialValue: Dictionary(uniqueKeysWithValues: tasks.map { task in
+            let text = task.grade?.formatted(.number.precision(.fractionLength(0 ... 2))) ?? ""
+            return (task.id, text)
+        }))
+    }
+
+    private var filteredSubjects: [AcademicSubject] {
+        subjects.filter { subject in
+            (selectedSubjectID == nil || selectedSubjectID == subject.id)
+                && tasks.contains { $0.academicSubjectID == subject.id }
+        }
+    }
+
+    private var changedTasks: [LumaTask] {
+        tasks.filter { gradeChanged(for: $0) }
+    }
+
+    private var allInputsAreValid: Bool {
+        tasks.allSatisfy { inputIsValid(for: $0) }
+    }
+
+    private var awaitingCount: Int {
+        tasks.filter { $0.academicEvaluationStatus == .awaitingGrade }.count
+    }
+
+    var body: some View {
+        VStack(spacing: 0) {
+            HStack(alignment: .top, spacing: 16) {
+                VStack(alignment: .leading, spacing: 5) {
+                    Text("CARGA RÁPIDA")
+                        .font(.caption2.weight(.bold))
+                        .tracking(1.1)
+                        .foregroundStyle(LumaPalette.sage)
+                    Text("Notas de evaluaciones")
+                        .font(.title2.weight(.semibold))
+                        .foregroundStyle(LumaPalette.ink)
+                    Text("Completá las que están esperando o corregí una nota ya guardada.")
+                        .font(.subheadline)
+                        .foregroundStyle(LumaPalette.secondaryInk)
+                }
+                Spacer()
+                Button("Cerrar") { dismiss() }
+                    .buttonStyle(.bordered)
+            }
+            .padding(24)
+
+            Divider().opacity(0.55)
+
+            VStack(alignment: .leading, spacing: 14) {
+                HStack(spacing: 12) {
+                    if subjects.count > 1 {
+                        Picker("Materia", selection: $selectedSubjectID) {
+                            Text("Todas las materias").tag(nil as UUID?)
+                            ForEach(subjects) { subject in
+                                Text(subject.name).tag(subject.id as UUID?)
+                            }
+                        }
+                        .frame(maxWidth: 280)
+                    }
+
+                    Spacer()
+
+                    if awaitingCount > 0 {
+                        Label(
+                            awaitingCount == 1 ? "1 esperando nota" : "\(awaitingCount) esperando nota",
+                            systemImage: "clock.badge.questionmark"
+                        )
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(LumaPalette.mustard)
+                    }
+                }
+
+                Text("Si borrás una calificación guardada, la evaluación volverá a quedar sin nota.")
+                    .font(.caption)
+                    .foregroundStyle(LumaPalette.secondaryInk)
+            }
+            .padding(.horizontal, 24)
+            .padding(.vertical, 16)
+
+            ScrollView {
+                LazyVStack(alignment: .leading, spacing: 18) {
+                    ForEach(filteredSubjects) { subject in
+                        subjectGradeGroup(subject)
+                    }
+                }
+                .padding(.horizontal, 24)
+                .padding(.bottom, 24)
+            }
+
+            Divider().opacity(0.55)
+
+            HStack {
+                if !allInputsAreValid {
+                    Label("Las notas deben estar entre 0 y 10.", systemImage: "exclamationmark.triangle.fill")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(LumaPalette.terracotta)
+                } else {
+                    Text(changesText)
+                        .font(.caption)
+                        .foregroundStyle(LumaPalette.secondaryInk)
+                }
+                Spacer()
+                Button("Cancelar") { dismiss() }
+                    .buttonStyle(.borderless)
+                Button("Guardar cambios") { save() }
+                    .buttonStyle(.borderedProminent)
+                    .tint(LumaPalette.indigo)
+                    .keyboardShortcut(.defaultAction)
+                    .disabled(changedTasks.isEmpty || !allInputsAreValid)
+            }
+            .padding(24)
+        }
+        .background(LumaBackground())
+        .frame(width: 720, height: 680)
+    }
+
+    private func subjectGradeGroup(_ subject: AcademicSubject) -> some View {
+        let subjectTasks = tasks.filter { $0.academicSubjectID == subject.id }
+        return VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Label(subject.name, systemImage: "book.closed.fill")
+                    .font(.headline)
+                    .foregroundStyle(LumaPalette.ink)
+                Spacer()
+                Text(subjectTasks.count == 1 ? "1 evaluación" : "\(subjectTasks.count) evaluaciones")
+                    .font(.caption)
+                    .foregroundStyle(LumaPalette.secondaryInk)
+            }
+
+            VStack(spacing: 0) {
+                ForEach(Array(subjectTasks.enumerated()), id: \.element.id) { index, task in
+                    gradeEntryRow(task)
+                    if index < subjectTasks.count - 1 {
+                        Divider().opacity(0.45)
+                    }
+                }
+            }
+            .lumaCard(padding: 0)
+        }
+    }
+
+    private func gradeEntryRow(_ task: LumaTask) -> some View {
+        HStack(spacing: 14) {
+            Image(systemName: task.grade == nil ? "clock.badge.questionmark" : "checkmark.seal.fill")
+                .font(.headline)
+                .foregroundStyle(task.grade == nil ? LumaPalette.mustard : LumaPalette.sage)
+                .frame(width: 30)
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text(task.title)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(LumaPalette.ink)
+                    .lineLimit(2)
+                HStack(spacing: 6) {
+                    Text(categoryName(for: task))
+                    Text("·")
+                    Text(task.grade == nil ? "Esperando nota" : "Calificada")
+                        .foregroundStyle(task.grade == nil ? LumaPalette.mustard : LumaPalette.sage)
+                }
+                .font(.caption)
+                .foregroundStyle(LumaPalette.secondaryInk)
+            }
+
+            Spacer(minLength: 12)
+
+            HStack(spacing: 6) {
+                TextField("Nota", text: gradeBinding(for: task.id))
+                    .textFieldStyle(.roundedBorder)
+                    .frame(width: 92)
+                    .overlay {
+                        if !inputIsValid(for: task) {
+                            RoundedRectangle(cornerRadius: 6)
+                                .stroke(LumaPalette.terracotta, lineWidth: 1)
+                        }
+                    }
+                Text("/ 10")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(LumaPalette.secondaryInk)
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 13)
+    }
+
+    private var changesText: String {
+        if changedTasks.isEmpty { return "No hay cambios para guardar." }
+        return changedTasks.count == 1 ? "1 nota modificada" : "\(changedTasks.count) notas modificadas"
+    }
+
+    private func categoryName(for task: LumaTask) -> String {
+        guard let itemID = task.subjectGradeItemID,
+              let item = items.first(where: { $0.id == itemID })
+        else { return "Evaluación" }
+        return item.title
+    }
+
+    private func gradeBinding(for taskID: UUID) -> Binding<String> {
+        Binding(
+            get: { gradeTexts[taskID] ?? "" },
+            set: { gradeTexts[taskID] = $0 }
+        )
+    }
+
+    private func parsedGrade(for task: LumaTask) -> Double? {
+        let text = (gradeTexts[task.id] ?? "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .replacingOccurrences(of: ",", with: ".")
+        guard !text.isEmpty else { return nil }
+        return Double(text)
+    }
+
+    private func inputIsValid(for task: LumaTask) -> Bool {
+        let text = (gradeTexts[task.id] ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        if text.isEmpty { return true }
+        guard let grade = parsedGrade(for: task) else { return false }
+        return (0 ... 10).contains(grade)
+    }
+
+    private func gradeChanged(for task: LumaTask) -> Bool {
+        guard inputIsValid(for: task) else { return false }
+        switch (task.grade, parsedGrade(for: task)) {
+        case (nil, nil): return false
+        case let (old?, new?): return abs(old - new) > 0.0001
+        default: return true
+        }
+    }
+
+    private func save() {
+        guard allInputsAreValid else { return }
+        for task in changedTasks {
+            task.grade = parsedGrade(for: task)
+        }
+        try? modelContext.save()
+        appState.refreshPlan()
+        dismiss()
     }
 }
 
@@ -720,7 +1057,10 @@ private struct GradeSimulatorView: View {
     @State private var simulatedGrades: [UUID: Double] = [:]
 
     private var pendingTasks: [LumaTask] {
-        tasks.filter { $0.academicEvaluationStatus == .pendingGrade }
+        tasks.filter {
+            $0.academicEvaluationStatus == .upcomingEvaluation
+                || $0.academicEvaluationStatus == .awaitingGrade
+        }
     }
 
     private var actualSummary: SubjectGradeSummary {
@@ -897,7 +1237,7 @@ private struct GradeSimulatorView: View {
                 Text(task.title)
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(LumaPalette.ink)
-                Text(categoryName(for: task))
+                Text("\(categoryName(for: task)) · \(task.academicEvaluationStatus?.title ?? "Sin nota")")
                     .font(.caption)
                     .foregroundStyle(LumaPalette.secondaryInk)
             }

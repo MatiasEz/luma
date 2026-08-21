@@ -192,7 +192,8 @@ struct TaskEditorView: View {
             subjectID: $academicSubjectID,
             gradeItemID: $subjectGradeItemID,
             grade: $grade,
-            legacyWeight: $academicWeight
+            legacyWeight: $academicWeight,
+            isCompleted: isCompleted
         )
     }
 

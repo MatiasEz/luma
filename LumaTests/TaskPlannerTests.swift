@@ -100,7 +100,31 @@ final class TaskPlannerTests: XCTestCase {
         )
 
         XCTAssertEqual(summary.pendingGradeTaskCount, 1)
+        XCTAssertEqual(summary.upcomingEvaluationTaskCount, 1)
+        XCTAssertEqual(summary.awaitingGradeTaskCount, 0)
+        XCTAssertEqual(summary.gradedWeight, 80, accuracy: 0.001)
+        XCTAssertEqual(summary.weightedContribution, 7, accuracy: 0.001)
+        XCTAssertEqual(summary.currentGrade ?? -1, 8.75, accuracy: 0.001)
         XCTAssertEqual(summary.requiredAverage(for: 8.5) ?? -1, 7.5, accuracy: 0.001)
+    }
+
+    func testAcademicEvaluationLifecycleSeparatesUpcomingFromAwaitingGrade() {
+        let subjectID = UUID()
+        let categoryID = UUID()
+        let evaluation = LumaTask(
+            title: "Parcial",
+            area: .university,
+            academicSubjectID: subjectID,
+            subjectGradeItemID: categoryID
+        )
+
+        XCTAssertEqual(evaluation.academicEvaluationStatus, .upcomingEvaluation)
+
+        evaluation.markCompleted()
+        XCTAssertEqual(evaluation.academicEvaluationStatus, .awaitingGrade)
+
+        evaluation.grade = 8.5
+        XCTAssertEqual(evaluation.academicEvaluationStatus, .graded)
     }
 
     func testSimulatorOverrideProducesFinalGradeWithoutChangingTask() {

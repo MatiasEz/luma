@@ -7,6 +7,8 @@ struct SubjectGradeCategorySummary: Identifiable {
     let assignedTaskCount: Int
     let gradedTaskCount: Int
     let pendingGradeTaskCount: Int
+    let upcomingEvaluationTaskCount: Int
+    let awaitingGradeTaskCount: Int
     let gradeSum: Double
     let averageGrade: Double?
     let weightedContribution: Double
@@ -21,9 +23,12 @@ struct SubjectGradeSummary {
     }
 
     var gradedWeight: Double {
-        categories
-            .filter { $0.averageGrade != nil }
-            .reduce(0) { $0 + $1.weightPercent }
+        categories.reduce(0) { result, category in
+            guard category.assignedTaskCount > 0 else { return result }
+            return result
+                + category.weightPercent
+                * Double(category.gradedTaskCount) / Double(category.assignedTaskCount)
+        }
     }
 
     var weightedContribution: Double {
@@ -54,6 +59,14 @@ struct SubjectGradeSummary {
 
     var pendingGradeTaskCount: Int {
         categories.reduce(0) { $0 + $1.pendingGradeTaskCount }
+    }
+
+    var upcomingEvaluationTaskCount: Int {
+        categories.reduce(0) { $0 + $1.upcomingEvaluationTaskCount }
+    }
+
+    var awaitingGradeTaskCount: Int {
+        categories.reduce(0) { $0 + $1.awaitingGradeTaskCount }
     }
 
     var ungradedWeight: Double {
@@ -109,7 +122,12 @@ enum SubjectGradeCalculator {
                 guard let grade = candidate, (0 ... 10).contains(grade) else { return nil }
                 return grade
             }
-            let pendingGradeTaskCount = assignedTasks.count - grades.count
+            let ungradedTasks = assignedTasks.filter { task in
+                simulatedGrades[task.id] == nil && task.grade == nil
+            }
+            let upcomingEvaluationTaskCount = ungradedTasks.filter { !$0.isCompleted }.count
+            let awaitingGradeTaskCount = ungradedTasks.filter { $0.isCompleted }.count
+            let pendingGradeTaskCount = ungradedTasks.count
             let average = grades.isEmpty
                 ? nil
                 : grades.reduce(0, +) / Double(grades.count)
@@ -120,9 +138,14 @@ enum SubjectGradeCalculator {
                 assignedTaskCount: assignedTasks.count,
                 gradedTaskCount: grades.count,
                 pendingGradeTaskCount: pendingGradeTaskCount,
+                upcomingEvaluationTaskCount: upcomingEvaluationTaskCount,
+                awaitingGradeTaskCount: awaitingGradeTaskCount,
                 gradeSum: grades.reduce(0, +),
                 averageGrade: average,
-                weightedContribution: (average ?? 0) * item.weightPercent / 100
+                weightedContribution: assignedTasks.isEmpty
+                    ? 0
+                    : item.weightPercent / 100
+                        * grades.reduce(0, +) / Double(assignedTasks.count)
             )
         }
         return SubjectGradeSummary(

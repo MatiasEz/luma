@@ -11,6 +11,10 @@ private struct LumaReleaseManifest: Decodable {
 @MainActor
 @Observable
 final class UpdateService {
+    private static let defaultFeedURL = URL(
+        string: "https://raw.githubusercontent.com/MatiasEz/luma/main/release.json"
+    )!
+
     enum State: Equatable {
         case idle
         case checking
@@ -27,12 +31,9 @@ final class UpdateService {
     }
 
     func check() async {
-        guard let string = Bundle.main.object(forInfoDictionaryKey: "LUMAUpdateFeedURL") as? String,
-              let url = URL(string: string)
-        else {
-            state = .unavailable("El canal de actualizaciones se activa al publicar la beta.")
-            return
-        }
+        let configuredURL = (Bundle.main.object(forInfoDictionaryKey: "LUMAUpdateFeedURL") as? String)
+            .flatMap(URL.init(string:))
+        let url = configuredURL ?? Self.defaultFeedURL
 
         state = .checking
         do {

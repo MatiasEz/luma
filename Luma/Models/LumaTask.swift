@@ -3,7 +3,8 @@ import SwiftData
 
 enum AcademicEvaluationStatus: String, CaseIterable, Identifiable {
     case notEvaluable
-    case pendingGrade
+    case upcomingEvaluation
+    case awaitingGrade
     case graded
 
     var id: String { rawValue }
@@ -11,7 +12,8 @@ enum AcademicEvaluationStatus: String, CaseIterable, Identifiable {
     var title: String {
         switch self {
         case .notEvaluable: "No evaluable"
-        case .pendingGrade: "Nota pendiente"
+        case .upcomingEvaluation: "Próxima evaluación"
+        case .awaitingGrade: "Esperando nota"
         case .graded: "Calificada"
         }
     }
@@ -19,7 +21,8 @@ enum AcademicEvaluationStatus: String, CaseIterable, Identifiable {
     var symbol: String {
         switch self {
         case .notEvaluable: "book.closed"
-        case .pendingGrade: "clock.badge.questionmark"
+        case .upcomingEvaluation: "calendar.badge.clock"
+        case .awaitingGrade: "clock.badge.questionmark"
         case .graded: "checkmark.seal.fill"
         }
     }
@@ -120,7 +123,8 @@ final class LumaTask {
     var academicEvaluationStatus: AcademicEvaluationStatus? {
         guard academicSubjectID != nil else { return nil }
         guard subjectGradeItemID != nil else { return .notEvaluable }
-        return grade == nil ? .pendingGrade : .graded
+        guard grade == nil else { return .graded }
+        return isCompleted ? .awaitingGrade : .upcomingEvaluation
     }
 
     var remainingEstimatedMinutes: Int {
