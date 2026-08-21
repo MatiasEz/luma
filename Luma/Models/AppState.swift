@@ -16,6 +16,7 @@ struct DailyPlanUpdate: Equatable {
 enum NavigationItem: String, CaseIterable, Identifiable {
     case today
     case inbox
+    case attention
     case week
     case subjects
     case balance
@@ -28,6 +29,7 @@ enum NavigationItem: String, CaseIterable, Identifiable {
         switch self {
         case .today: "Hoy"
         case .inbox: "Inbox"
+        case .attention: "Atención"
         case .week: "Semana"
         case .subjects: "Materias"
         case .balance: "Balance"
@@ -40,6 +42,7 @@ enum NavigationItem: String, CaseIterable, Identifiable {
         switch self {
         case .today: "sparkles"
         case .inbox: "tray.full.fill"
+        case .attention: "bell.badge.fill"
         case .week: "calendar"
         case .subjects: "books.vertical.fill"
         case .balance: "circle.hexagongrid.fill"
@@ -61,6 +64,8 @@ final class AppState {
 
     @ObservationIgnored private let defaults: UserDefaults
     @ObservationIgnored private let calendar: Calendar
+    @ObservationIgnored private var undoHandler: (() -> Void)?
+    @ObservationIgnored private var undoDismissTask: Task<Void, Never>?
 
     var selection: NavigationItem? = .today
     var energyPreference: EnergyPreference = .normal
@@ -71,6 +76,7 @@ final class AppState {
     var planRevision = 0
     var focusTaskID: UUID?
     var focusDurationMinutes: Int?
+    var undoMessage: String?
     var onboardingCompleted = false {
         didSet { defaults.set(onboardingCompleted, forKey: Self.onboardingCompletedKey) }
     }
@@ -164,7 +170,10 @@ final class AppState {
 
         let previousIDs = Set(dailyPlan?.taskIDs ?? [])
         let postponed = pending.filter { previousIDs.contains($0.id) }
-        postponed.forEach { $0.postponementCount += 1 }
+        postponed.forEach {
+            $0.postponementCount += 1
+            $0.touch(at: now)
+        }
 
         energyPreference = .normal
         let ids = planner.recommendations(
@@ -432,6 +441,87 @@ final class AppState {
             blocks: proposal.afterBlocks
         )
         refreshPlan()
+    }
+
+    func restoreReplan(_ proposal: ReplanProposal) {
+        energyPreference = proposal.beforeEnergy
+        savePlan(
+            day: proposal.day,
+            taskIDs: proposal.beforeTaskIDs,
+            preference: proposal.beforeEnergy
+        )
+        saveAgenda(
+            day: proposal.day,
+            availableMinutes: proposal.beforeAvailableMinutes,
+            startMinuteOfDay: proposal.startMinuteOfDay,
+            availabilityWindows: proposal.beforeAvailableMinutes > 0
+                ? [AvailabilityWindow(
+                    startMinuteOfDay: proposal.startMinuteOfDay,
+                    endMinuteOfDay: min(24 * 60, proposal.startMinuteOfDay + proposal.beforeAvailableMinutes)
+                )]
+                : [],
+            availabilityConfirmed: true,
+            blocks: proposal.beforeBlocks
+        )
+        refreshPlan()
+    }
+
+    func moveAgendaBlock(
+        taskID: UUID,
+        to startMinuteOfDay: Int,
+        scheduler: DailyScheduler,
+        busyBlocks: [BusyTimeBlock]
+    ) {
+        guard let agenda = dailyAgenda else { return }
+        let blocks = scheduler.movedBlocks(
+            agenda.blocks,
+            taskID: taskID,
+            proposedStartMinute: startMinuteOfDay,
+            availabilityWindows: agenda.availabilityWindows,
+            busyBlocks: busyBlocks
+        )
+        guard blocks != agenda.blocks else { return }
+        saveAgenda(
+            day: agenda.day,
+            availableMinutes: agenda.availableMinutes,
+            startMinuteOfDay: agenda.startMinuteOfDay,
+            availabilityWindows: agenda.availabilityWindows,
+            availabilityConfirmed: agenda.availabilityConfirmed,
+            blocks: blocks
+        )
+        refreshPlan()
+    }
+
+    func restoreAgenda(_ snapshot: DailyAgendaSnapshot) {
+        dailyAgenda = snapshot
+        if let data = try? JSONEncoder().encode(snapshot) {
+            defaults.set(data, forKey: Self.dailyAgendaKey)
+        }
+        refreshPlan()
+    }
+
+    func registerUndo(message: String, action: @escaping () -> Void) {
+        undoDismissTask?.cancel()
+        undoMessage = message
+        undoHandler = action
+        undoDismissTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .seconds(9))
+            guard !Task.isCancelled else { return }
+            self?.clearUndo()
+        }
+    }
+
+    func performUndo() {
+        let handler = undoHandler
+        clearUndo()
+        handler?()
+    }
+
+    func clearUndo() {
+        undoDismissTask?.cancel()
+        undoDismissTask = nil
+        undoMessage = nil
+        undoHandler = nil
     }
 
     var preferredBlockOverride: Int? {

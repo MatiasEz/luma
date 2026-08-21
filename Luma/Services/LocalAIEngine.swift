@@ -293,12 +293,14 @@ final class LocalAIEngine {
         {
           "message": "respuesta clara de máximo 100 palabras",
           "action": {
-            "type": "none|replan|start_focus|complete_task|rename_task",
+            "type": "none|replan|start_focus|complete_task|rename_task|change_deadline|set_grade|change_duration",
             "label": "texto corto para el botón; para rename_task, el nombre nuevo exacto",
             "taskID": "UUID exacto del contexto o null",
             "energy": "normal|tired|energized o null",
             "availableMinutes": 60,
-            "durationMinutes": 25
+            "durationMinutes": 25,
+            "date": "yyyy-MM-dd o null",
+            "number": 8.5
           }
         }
 
@@ -312,7 +314,10 @@ final class LocalAIEngine {
         - Si la usuaria pide una sesión para una materia, elegí entre los pendientes de esa materia el más conveniente del plan y conservá exactamente la duración solicitada.
         - Si piden cambiar o corregir el nombre de una tarea, usá rename_task. No uses replan.
         - Para rename_task, label contiene únicamente el nombre nuevo exacto, sin comillas ni explicación.
-        - Para start_focus, complete_task o rename_task usá exclusivamente un UUID presente en el contexto.
+        - Si piden mover, postergar o cambiar la fecha de una tarea, usá change_deadline y date. Interpretá mañana y días de la semana desde la fecha local del contexto.
+        - Si piden cargar o corregir una nota, usá set_grade y number entre 0 y 10.
+        - Si piden cambiar cuánto dura una tarea, usá change_duration y durationMinutes entre 5 y 480.
+        - Para acciones sobre tareas usá exclusivamente un UUID presente en el contexto.
         - Para replan podés indicar energía y minutos disponibles cuando la usuaria los haya mencionado.
         - No muestres razonamiento interno, etiquetas XML ni Markdown.
         """
@@ -1020,6 +1025,8 @@ private struct AILumaChatActionPayload: Decodable {
     let energy: String?
     let availableMinutes: Int?
     let durationMinutes: Int?
+    let date: String?
+    let number: Double?
 
     var suggestedAction: LumaChatSuggestedAction? {
         let cleanLabel = label?.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -1060,10 +1067,56 @@ private struct AILumaChatActionPayload: Decodable {
                 label: String(cleanLabel.prefix(160)),
                 taskID: id
             )
+        case "change_deadline":
+            guard let taskID,
+                  let id = UUID(uuidString: taskID),
+                  let date,
+                  let parsedDate = Self.dateFormatter.date(from: date)
+            else { return nil }
+            return LumaChatSuggestedAction(
+                kind: .changeDeadline,
+                label: cleanLabel.flatMap { $0.isEmpty ? nil : String($0.prefix(70)) }
+                    ?? "Cambiar fecha",
+                taskID: id,
+                dateValue: parsedDate
+            )
+        case "set_grade":
+            guard let taskID,
+                  let id = UUID(uuidString: taskID),
+                  let number,
+                  (0 ... 10).contains(number)
+            else { return nil }
+            return LumaChatSuggestedAction(
+                kind: .setGrade,
+                label: cleanLabel.flatMap { $0.isEmpty ? nil : String($0.prefix(70)) }
+                    ?? "Guardar nota",
+                taskID: id,
+                numericValue: number
+            )
+        case "change_duration":
+            guard let taskID,
+                  let id = UUID(uuidString: taskID),
+                  let durationMinutes
+            else { return nil }
+            return LumaChatSuggestedAction(
+                kind: .changeDuration,
+                label: cleanLabel.flatMap { $0.isEmpty ? nil : String($0.prefix(70)) }
+                    ?? "Cambiar duración",
+                taskID: id,
+                durationMinutes: min(480, max(5, durationMinutes))
+            )
         default:
             return nil
         }
     }
+
+    private static let dateFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.calendar = Calendar(identifier: .gregorian)
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "yyyy-MM-dd"
+        return formatter
+    }()
 }
 
 private struct AIStudyChunkPayload: Decodable {

@@ -46,6 +46,7 @@ struct LumaBackupPayload: Codable {
         var grade: Double?
         var statusRaw: String
         var createdAt: Date
+        var updatedAt: Date?
         var completedAt: Date?
         var postponementCount: Int
         var unlocksAnotherTask: Bool
@@ -132,6 +133,7 @@ enum BackupService {
                     grade: $0.grade,
                     statusRaw: $0.statusRaw,
                     createdAt: $0.createdAt,
+                    updatedAt: $0.updatedAt,
                     completedAt: $0.completedAt,
                     postponementCount: $0.postponementCount,
                     unlocksAnotherTask: $0.unlocksAnotherTask,
@@ -244,6 +246,7 @@ enum BackupService {
                 grade: record.grade,
                 status: TaskStatus(rawValue: record.statusRaw) ?? .pending,
                 createdAt: record.createdAt,
+                updatedAt: record.updatedAt ?? record.createdAt,
                 completedAt: record.completedAt,
                 postponementCount: record.postponementCount,
                 unlocksAnotherTask: record.unlocksAnotherTask,

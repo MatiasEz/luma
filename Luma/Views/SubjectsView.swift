@@ -2,6 +2,7 @@ import SwiftData
 import SwiftUI
 
 struct SubjectsView: View {
+    @Environment(AppState.self) private var appState
     @Environment(\.modelContext) private var modelContext
     @Query(sort: \AcademicSubject.name) private var subjects: [AcademicSubject]
     @Query(sort: \SubjectGradeItem.createdAt) private var gradeItems: [SubjectGradeItem]
@@ -31,6 +32,14 @@ struct SubjectsView: View {
         }
     }
 
+    private var academicInsights: [AcademicSubjectInsight] {
+        AcademicInsightEngine.insights(
+            subjects: activeSubjects,
+            items: activeItems,
+            tasks: tasks
+        )
+    }
+
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 24) {
@@ -47,6 +56,7 @@ struct SubjectsView: View {
                 }
 
                 explanationCard
+                academicRadar
 
                 if activeSubjects.isEmpty {
                     EmptyStateView(
@@ -158,6 +168,32 @@ struct SubjectsView: View {
         .lumaCard(padding: 16)
     }
 
+    @ViewBuilder
+    private var academicRadar: some View {
+        if !academicInsights.isEmpty {
+            VStack(alignment: .leading, spacing: 12) {
+                SectionTitle(
+                    eyebrow: "Prioridad académica",
+                    title: "Dónde conviene poner energía",
+                    trailing: "Próximos 7 días"
+                )
+                LazyVGrid(
+                    columns: [GridItem(.adaptive(minimum: 260), spacing: 12)],
+                    spacing: 12
+                ) {
+                    ForEach(academicInsights.prefix(3)) { insight in
+                        AcademicInsightCard(insight: insight) {
+                            appState.startFocus(
+                                for: insight.taskID,
+                                durationMinutes: insight.recommendedMinutes
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     private func items(for subject: AcademicSubject) -> [SubjectGradeItem] {
         activeItems.filter { $0.subjectID == subject.id }
     }
@@ -177,6 +213,48 @@ struct SubjectsView: View {
         }
         try? modelContext.save()
         subjectToArchive = nil
+    }
+}
+
+private struct AcademicInsightCard: View {
+    let insight: AcademicSubjectInsight
+    let onStart: () -> Void
+
+    private var tint: Color {
+        switch insight.level {
+        case .calm: LumaPalette.sage
+        case .watch: LumaPalette.mustard
+        case .urgent: LumaPalette.terracotta
+        }
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 11) {
+            HStack {
+                Label(insight.level.title, systemImage: insight.level.symbol)
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(tint)
+                Spacer()
+                Text("\(insight.recommendedMinutes) min")
+                    .font(.caption.weight(.semibold).monospacedDigit())
+                    .foregroundStyle(LumaPalette.indigo)
+            }
+            Text(insight.subjectName)
+                .font(.headline)
+                .foregroundStyle(LumaPalette.ink)
+            Text(insight.taskTitle)
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(LumaPalette.ink)
+                .lineLimit(2)
+            Text(insight.reason)
+                .font(.caption)
+                .foregroundStyle(LumaPalette.secondaryInk)
+                .lineLimit(3)
+            Button("Empezar bloque", systemImage: "play.fill", action: onStart)
+                .buttonStyle(SoftButtonStyle(color: tint))
+        }
+        .frame(maxWidth: .infinity, minHeight: 170, alignment: .topLeading)
+        .lumaCard(padding: 14)
     }
 }
 
@@ -1040,6 +1118,7 @@ private struct QuickGradeEntryView: View {
         guard allInputsAreValid else { return }
         for task in changedTasks {
             task.grade = parsedGrade(for: task)
+            task.touch()
         }
         try? modelContext.save()
         appState.refreshPlan()

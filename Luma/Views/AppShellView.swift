@@ -36,7 +36,43 @@ struct AppShellView: View {
                 LumaAssistantView()
                     .inspectorColumnWidth(min: 310, ideal: 360, max: 420)
             }
+
+            if let undoMessage = appState.undoMessage {
+                VStack {
+                    Spacer()
+                    HStack(spacing: 14) {
+                        Label(undoMessage, systemImage: "arrow.uturn.backward.circle.fill")
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(LumaPalette.ink)
+                            .lineLimit(2)
+                        Spacer(minLength: 8)
+                        Button("Deshacer") { appState.performUndo() }
+                            .buttonStyle(.borderedProminent)
+                            .tint(LumaPalette.indigo)
+                        Button {
+                            appState.clearUndo()
+                        } label: {
+                            Image(systemName: "xmark")
+                        }
+                        .buttonStyle(.plain)
+                        .foregroundStyle(LumaPalette.secondaryInk)
+                    }
+                    .padding(14)
+                    .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 18, style: .continuous)
+                            .stroke(Color.white.opacity(0.7))
+                    }
+                    .shadow(color: Color.black.opacity(0.12), radius: 18, y: 8)
+                    .frame(maxWidth: 620)
+                    .padding(.horizontal, 24)
+                    .padding(.bottom, 20)
+                }
+                .transition(.move(edge: .bottom).combined(with: .opacity))
+                .zIndex(20)
+            }
         }
+        .animation(.easeInOut(duration: 0.22), value: appState.undoMessage)
         .tint(LumaPalette.indigo)
         .sheet(isPresented: $appState.quickCapturePresented) {
             QuickCaptureView()
@@ -164,7 +200,18 @@ struct AppShellView: View {
         List(selection: selection) {
             Section {
                 ForEach(NavigationItem.allCases) { item in
-                    Label(item.title, systemImage: item.symbol)
+                    HStack(spacing: 8) {
+                        Label(item.title, systemImage: item.symbol)
+                        Spacer(minLength: 6)
+                        if item == .attention, attentionCount > 0 {
+                            Text("\(attentionCount)")
+                                .font(.caption2.weight(.bold).monospacedDigit())
+                                .foregroundStyle(Color.white)
+                                .padding(.horizontal, 7)
+                                .padding(.vertical, 3)
+                                .background(LumaPalette.terracotta, in: Capsule())
+                        }
+                    }
                         .tag(item)
                         .padding(.vertical, 5)
                 }
@@ -211,6 +258,7 @@ struct AppShellView: View {
                 $0.id.uuidString,
                 $0.title,
                 $0.statusRaw,
+                "\($0.updatedAt.timeIntervalSinceReferenceDate)",
                 "\($0.focusedMinutes)",
                 "\($0.postponementCount)",
                 $0.academicSubjectID?.uuidString ?? "sin-materia",
@@ -231,11 +279,34 @@ struct AppShellView: View {
         return "\(taskPart)#\(sessionPart)#\(profilePart)#\(chatPart)#\(replanPart)#\(subjectPart)#\(gradeItemPart)"
     }
 
+    private var attentionCount: Int {
+        let now = Date.now
+        let taskIssues = tasks.filter { task in
+            task.academicEvaluationStatus == .awaitingGrade
+                || (!task.isCompleted && (task.deadline.map { $0 < now } ?? false))
+                || (!task.isCompleted && TaskDependencyResolver.isBlocked(task, in: tasks))
+                || (!task.isCompleted && task.deadline == nil
+                    && now.timeIntervalSince(task.createdAt) >= 3 * 86_400)
+        }.count
+        let incompleteSubjects = subjects.filter { subject in
+            guard !subject.isArchived else { return false }
+            let total = subjectGradeItems
+                .filter { !$0.isArchived && $0.subjectID == subject.id }
+                .reduce(0) { $0 + $1.weightPercent }
+            return abs(total - 100) > 0.001
+        }.count
+        let syncIssue: Int
+        if case .failed = cloudSyncService.state { syncIssue = 1 } else { syncIssue = 0 }
+        let calendarIssue = calendarService.lastError == nil ? 0 : 1
+        return taskIssues + incompleteSubjects + syncIssue + calendarIssue
+    }
+
     @ViewBuilder
     private var detail: some View {
         switch appState.selection ?? .today {
         case .today: DashboardView()
         case .inbox: InboxView()
+        case .attention: AttentionView()
         case .week: WeekView()
         case .subjects: SubjectsView()
         case .balance: BalanceView()

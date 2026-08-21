@@ -43,6 +43,7 @@ final class LumaTask {
     var grade: Double?
     var statusRaw: String
     var createdAt: Date
+    var updatedAt: Date = Date.now
     var completedAt: Date?
     var postponementCount: Int
     var unlocksAnotherTask: Bool
@@ -66,6 +67,7 @@ final class LumaTask {
         grade: Double? = nil,
         status: TaskStatus = .pending,
         createdAt: Date = .now,
+        updatedAt: Date = .now,
         completedAt: Date? = nil,
         postponementCount: Int = 0,
         unlocksAnotherTask: Bool = false,
@@ -88,6 +90,7 @@ final class LumaTask {
         self.grade = grade
         statusRaw = status.rawValue
         self.createdAt = createdAt
+        self.updatedAt = updatedAt
         self.completedAt = completedAt
         self.postponementCount = postponementCount
         self.unlocksAnotherTask = unlocksAnotherTask
@@ -135,11 +138,13 @@ final class LumaTask {
     func markCompleted() {
         status = .completed
         completedAt = .now
+        touch()
     }
 
     func restore() {
         status = .pending
         completedAt = nil
+        touch()
     }
 
     func recordFocusSession(minutes: Int, at date: Date = .now) {
@@ -147,6 +152,88 @@ final class LumaTask {
         focusedMinutes += minutes
         focusSessionCount += 1
         lastFocusedAt = date
+        touch(at: date)
+    }
+
+    func touch(at date: Date = .now) {
+        updatedAt = date
+    }
+}
+
+struct LumaTaskSnapshot {
+    let id: UUID
+    let title: String
+    let area: LifeArea
+    let deadline: Date?
+    let estimatedMinutes: Int
+    let energy: EnergyLevel
+    let impact: ImpactType
+    let academicWeight: Double?
+    let academicSubjectID: UUID?
+    let subjectGradeItemID: UUID?
+    let grade: Double?
+    let status: TaskStatus
+    let createdAt: Date
+    let updatedAt: Date
+    let completedAt: Date?
+    let postponementCount: Int
+    let unlocksAnotherTask: Bool
+    let unlocksTaskID: UUID?
+    let notes: String
+    let focusedMinutes: Int
+    let focusSessionCount: Int
+    let lastFocusedAt: Date?
+
+    init(task: LumaTask) {
+        id = task.id
+        title = task.title
+        area = task.area
+        deadline = task.deadline
+        estimatedMinutes = task.estimatedMinutes
+        energy = task.energy
+        impact = task.impact
+        academicWeight = task.academicWeight
+        academicSubjectID = task.academicSubjectID
+        subjectGradeItemID = task.subjectGradeItemID
+        grade = task.grade
+        status = task.status
+        createdAt = task.createdAt
+        updatedAt = task.updatedAt
+        completedAt = task.completedAt
+        postponementCount = task.postponementCount
+        unlocksAnotherTask = task.unlocksAnotherTask
+        unlocksTaskID = task.unlocksTaskID
+        notes = task.notes
+        focusedMinutes = task.focusedMinutes
+        focusSessionCount = task.focusSessionCount
+        lastFocusedAt = task.lastFocusedAt
+    }
+
+    func makeTask() -> LumaTask {
+        LumaTask(
+            id: id,
+            title: title,
+            area: area,
+            deadline: deadline,
+            estimatedMinutes: estimatedMinutes,
+            energy: energy,
+            impact: impact,
+            academicWeight: academicWeight,
+            academicSubjectID: academicSubjectID,
+            subjectGradeItemID: subjectGradeItemID,
+            grade: grade,
+            status: status,
+            createdAt: createdAt,
+            updatedAt: updatedAt,
+            completedAt: completedAt,
+            postponementCount: postponementCount,
+            unlocksAnotherTask: unlocksAnotherTask,
+            unlocksTaskID: unlocksTaskID,
+            notes: notes,
+            focusedMinutes: focusedMinutes,
+            focusSessionCount: focusSessionCount,
+            lastFocusedAt: lastFocusedAt
+        )
     }
 }
 

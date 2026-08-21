@@ -10,22 +10,25 @@ struct InboxView: View {
     @Query(sort: \AcademicSubject.name) private var subjects: [AcademicSubject]
     @Query(sort: \SubjectGradeItem.createdAt) private var gradeItems: [SubjectGradeItem]
     @State private var selectedArea: LifeArea?
+    @State private var selectedSmartFilter: SmartTaskFilter = .all
     @State private var showCompleted = false
     @State private var editingTask: LumaTask?
+    @State private var selectedTask: LumaTask?
 
-    private var awaitingGradeTasks: [LumaTask] {
+    private var filteredTasks: [LumaTask] {
         tasks.filter { task in
-            task.academicEvaluationStatus == .awaitingGrade
-                && (selectedArea == nil || task.area == selectedArea)
+            (selectedArea == nil || task.area == selectedArea)
+                && selectedSmartFilter.matches(task, in: tasks)
+                && (showCompleted || !task.isCompleted || task.academicEvaluationStatus == .awaitingGrade)
         }
     }
 
+    private var awaitingGradeTasks: [LumaTask] {
+        filteredTasks.filter { $0.academicEvaluationStatus == .awaitingGrade }
+    }
+
     private var regularTasks: [LumaTask] {
-        tasks.filter { task in
-            task.academicEvaluationStatus != .awaitingGrade
-                && (showCompleted || !task.isCompleted)
-                && (selectedArea == nil || task.area == selectedArea)
-        }
+        filteredTasks.filter { $0.academicEvaluationStatus != .awaitingGrade }
     }
 
     private var awaitingGradeCount: Int {
@@ -33,28 +36,51 @@ struct InboxView: View {
     }
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 22) {
-                ViewThatFits(in: .horizontal) {
-                    HStack(alignment: .bottom) {
-                        inboxTitle
-                        Spacer(minLength: 14)
-                        addButton
+        HStack(spacing: 0) {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 22) {
+                    ViewThatFits(in: .horizontal) {
+                        HStack(alignment: .bottom) {
+                            inboxTitle
+                            Spacer(minLength: 14)
+                            addButton
+                        }
+                        VStack(alignment: .leading, spacing: 12) {
+                            inboxTitle
+                            addButton
+                        }
                     }
-                    VStack(alignment: .leading, spacing: 12) {
-                        inboxTitle
-                        addButton
-                    }
-                }
 
-                filters
-                awaitingGradesSection
-                Divider().opacity(0.45)
-                regularTasksSection
+                    filters
+                    if selectedSmartFilter == .all || selectedSmartFilter == .evaluations {
+                        awaitingGradesSection
+                        Divider().opacity(0.45)
+                    }
+                    regularTasksSection
+                }
+                .padding(30)
+                .frame(maxWidth: 980, alignment: .leading)
             }
-            .padding(30)
-            .frame(maxWidth: 980, alignment: .leading)
+
+            if let selectedTask {
+                Divider().opacity(0.55)
+                TaskDetailPanel(
+                    task: selectedTask,
+                    subjectName: subjectName(for: selectedTask),
+                    categoryName: categoryName(for: selectedTask),
+                    blockers: blockerNames(for: selectedTask),
+                    unlockedTaskName: unlockedTaskName(for: selectedTask),
+                    isCalendarSynced: calendarService.isTaskSynced(selectedTask.id),
+                    onClose: { self.selectedTask = nil },
+                    onEdit: { editingTask = selectedTask },
+                    onStart: { appState.startFocus(for: selectedTask.id) },
+                    onToggleCompletion: { toggleCompletion(selectedTask) }
+                )
+                .frame(width: 350)
+                .transition(.move(edge: .trailing).combined(with: .opacity))
+            }
         }
+        .animation(.easeInOut(duration: 0.2), value: selectedTask?.id)
         .navigationTitle("Inbox")
         .sheet(isPresented: Binding(
             get: { editingTask != nil },
@@ -132,16 +158,37 @@ struct InboxView: View {
             unlockedTaskName: unlockedTaskName(for: task),
             onToggleCompletion: { toggleCompletion(task) },
             onSaveGrade: { saveGrade($0, for: task) },
+            onOpenDetail: { selectedTask = task },
             onEdit: { editingTask = task },
+            onPostpone: { postpone(task) },
             onDelete: { delete(task) }
         )
     }
 
     private var filters: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: 12) {
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 8) {
-                    Button("Todas") { selectedArea = nil }
+                    ForEach(SmartTaskFilter.allCases) { filter in
+                        Button {
+                            selectedSmartFilter = filter
+                            if filter == .completed { showCompleted = true }
+                        } label: {
+                            Label(filter.title, systemImage: filter.symbol)
+                        }
+                        .buttonStyle(SoftButtonStyle(
+                            color: selectedSmartFilter == filter
+                                ? filter.color
+                                : LumaPalette.secondaryInk
+                        ))
+                    }
+                }
+                .padding(.vertical, 2)
+            }
+
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    Button("Todas las áreas") { selectedArea = nil }
                         .buttonStyle(SoftButtonStyle(color: selectedArea == nil ? LumaPalette.indigo : LumaPalette.secondaryInk))
 
                     ForEach(LifeArea.allCases) { area in
@@ -155,6 +202,7 @@ struct InboxView: View {
                 .toggleStyle(.switch)
                 .font(.caption)
                 .foregroundStyle(LumaPalette.secondaryInk)
+                .disabled(selectedSmartFilter == .completed)
         }
     }
 
@@ -183,31 +231,76 @@ struct InboxView: View {
     }
 
     private func delete(_ task: LumaTask) {
+        let snapshot = LumaTaskSnapshot(task: task)
+        let dependentSources = tasks.filter { $0.unlocksTaskID == task.id }
         try? calendarService.removeTaskEvent(for: task.id)
         cloudSyncService.queueTaskDeletion(task.id)
-        for source in tasks where source.unlocksTaskID == task.id {
+        for source in dependentSources {
             source.unlocksTaskID = nil
             source.unlocksAnotherTask = false
+            source.touch()
         }
+        if selectedTask?.id == task.id { selectedTask = nil }
         modelContext.delete(task)
         try? modelContext.save()
         appState.refreshPlan()
+        appState.registerUndo(message: "Pendiente eliminado") {
+            let restored = snapshot.makeTask()
+            modelContext.insert(restored)
+            cloudSyncService.cancelTaskDeletion(restored.id)
+            for source in dependentSources {
+                source.unlocksTaskID = restored.id
+                source.unlocksAnotherTask = true
+                source.touch()
+            }
+            try? modelContext.save()
+            try? calendarService.syncTask(restored)
+            appState.refreshPlan()
+            selectedTask = restored
+        }
     }
 
     private func toggleCompletion(_ task: LumaTask) {
+        let wasCompleted = task.isCompleted
         withAnimation {
-            task.isCompleted ? task.restore() : task.markCompleted()
+            wasCompleted ? task.restore() : task.markCompleted()
         }
         try? modelContext.save()
         try? calendarService.syncTask(task)
         appState.refreshPlan()
+        appState.registerUndo(message: wasCompleted ? "La tarea volvió a pendientes" : "Tarea completada") {
+            wasCompleted ? task.markCompleted() : task.restore()
+            try? modelContext.save()
+            try? calendarService.syncTask(task)
+            appState.refreshPlan()
+        }
     }
 
     private func saveGrade(_ grade: Double, for task: LumaTask) {
         guard (0 ... 10).contains(grade) else { return }
         task.grade = grade
+        task.touch()
         try? modelContext.save()
         appState.refreshPlan()
+    }
+
+    private func postpone(_ task: LumaTask) {
+        let previousDeadline = task.deadline
+        let previousCount = task.postponementCount
+        task.deadline = Calendar.current.date(byAdding: .day, value: 1, to: task.deadline ?? .now)
+        task.postponementCount += 1
+        task.touch()
+        try? modelContext.save()
+        try? calendarService.syncTask(task)
+        appState.refreshPlan()
+        appState.registerUndo(message: "Tarea postergada un día") {
+            task.deadline = previousDeadline
+            task.postponementCount = previousCount
+            task.touch()
+            try? modelContext.save()
+            try? calendarService.syncTask(task)
+            appState.refreshPlan()
+        }
     }
 
     private func blockerNames(for task: LumaTask) -> [String] {
@@ -238,7 +331,9 @@ private struct InboxTaskRow: View {
     let unlockedTaskName: String?
     let onToggleCompletion: () -> Void
     let onSaveGrade: (Double) -> Void
+    let onOpenDetail: () -> Void
     let onEdit: () -> Void
+    let onPostpone: () -> Void
     let onDelete: () -> Void
 
     @State private var isGradeEntryExpanded = false
@@ -282,6 +377,8 @@ private struct InboxTaskRow: View {
         }
         .opacity(isFinishedForDisplay ? 0.56 : 1)
         .lumaCard(padding: 14)
+        .contentShape(Rectangle())
+        .onTapGesture(perform: onOpenDetail)
     }
 
     private var inlineGradeEntry: some View {
@@ -443,10 +540,7 @@ private struct InboxTaskRow: View {
                     action: onToggleCompletion
                 )
                 if !task.isCompleted {
-                    Button("Postergar un día") {
-                        task.deadline = Calendar.current.date(byAdding: .day, value: 1, to: task.deadline ?? .now)
-                        task.postponementCount += 1
-                    }
+                    Button("Postergar un día", action: onPostpone)
                 }
                 Divider()
                 Button("Eliminar", role: .destructive, action: onDelete)
@@ -457,5 +551,284 @@ private struct InboxTaskRow: View {
             .frame(width: 34)
         }
         .fixedSize()
+    }
+}
+
+private enum SmartTaskFilter: String, CaseIterable, Identifiable {
+    case all
+    case week
+    case evaluations
+    case quick
+    case lowEnergy
+    case blocked
+    case noDate
+    case completed
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .all: "Todo"
+        case .week: "Esta semana"
+        case .evaluations: "Evaluaciones"
+        case .quick: "Tareas rápidas"
+        case .lowEnergy: "Poca energía"
+        case .blocked: "Bloqueadas"
+        case .noDate: "Sin fecha"
+        case .completed: "Hechas"
+        }
+    }
+
+    var symbol: String {
+        switch self {
+        case .all: "tray.full"
+        case .week: "calendar"
+        case .evaluations: "graduationcap"
+        case .quick: "bolt.fill"
+        case .lowEnergy: "battery.25percent"
+        case .blocked: "lock.fill"
+        case .noDate: "calendar.badge.questionmark"
+        case .completed: "checkmark.circle.fill"
+        }
+    }
+
+    var color: Color {
+        switch self {
+        case .all: LumaPalette.indigo
+        case .week, .evaluations: LumaPalette.mustard
+        case .quick: LumaPalette.sage
+        case .lowEnergy: LumaPalette.lavender
+        case .blocked: LumaPalette.terracotta
+        case .noDate, .completed: LumaPalette.secondaryInk
+        }
+    }
+
+    func matches(_ task: LumaTask, in tasks: [LumaTask], now: Date = .now) -> Bool {
+        switch self {
+        case .all:
+            return true
+        case .week:
+            guard !task.isCompleted, let deadline = task.deadline else { return false }
+            let end = Calendar.current.date(byAdding: .day, value: 7, to: now) ?? now
+            return deadline >= Calendar.current.startOfDay(for: now) && deadline <= end
+        case .evaluations:
+            return task.academicEvaluationStatus == .upcomingEvaluation
+                || task.academicEvaluationStatus == .awaitingGrade
+        case .quick:
+            return !task.isCompleted && task.remainingEstimatedMinutes <= 30
+        case .lowEnergy:
+            return !task.isCompleted && task.energy == .low
+        case .blocked:
+            return !task.isCompleted && TaskDependencyResolver.isBlocked(task, in: tasks)
+        case .noDate:
+            return !task.isCompleted && task.deadline == nil
+        case .completed:
+            return task.isCompleted
+        }
+    }
+}
+
+private struct TaskDetailPanel: View {
+    let task: LumaTask
+    let subjectName: String?
+    let categoryName: String?
+    let blockers: [String]
+    let unlockedTaskName: String?
+    let isCalendarSynced: Bool
+    let onClose: () -> Void
+    let onEdit: () -> Void
+    let onStart: () -> Void
+    let onToggleCompletion: () -> Void
+
+    var body: some View {
+        VStack(spacing: 0) {
+            HStack {
+                Text("Detalle")
+                    .font(.headline)
+                    .foregroundStyle(LumaPalette.ink)
+                Spacer()
+                Button(action: onClose) {
+                    Image(systemName: "xmark")
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(LumaPalette.secondaryInk)
+            }
+            .padding(18)
+
+            Divider().opacity(0.55)
+
+            ScrollView {
+                VStack(alignment: .leading, spacing: 18) {
+                    VStack(alignment: .leading, spacing: 10) {
+                        AreaPill(area: task.area)
+                        Text(task.title)
+                            .font(.title2.weight(.semibold))
+                            .foregroundStyle(LumaPalette.ink)
+                            .fixedSize(horizontal: false, vertical: true)
+                        Label(statusTitle, systemImage: statusSymbol)
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(statusColor)
+                    }
+
+                    actionButtons
+
+                    detailSection("Planificación") {
+                        detailRow("Duración", "\(task.estimatedMinutes) min", "timer")
+                        detailRow("Energía", task.energy.title, task.energy.symbol)
+                        detailRow("Impacto", task.impact.title, "chart.bar.fill")
+                        detailRow(
+                            "Fecha",
+                            task.deadline?.formatted(date: .abbreviated, time: .omitted) ?? "Sin fecha",
+                            "calendar"
+                        )
+                    }
+
+                    if task.focusedMinutes > 0 || task.focusSessionCount > 0 {
+                        detailSection("Progreso") {
+                            ProgressView(
+                                value: Double(min(task.focusedMinutes, task.estimatedMinutes)),
+                                total: Double(max(1, task.estimatedMinutes))
+                            )
+                            .tint(LumaPalette.sage)
+                            Text("\(task.focusedMinutes) min en \(task.focusSessionCount) sesiones · quedan aproximadamente \(task.remainingEstimatedMinutes) min")
+                                .font(.caption)
+                                .foregroundStyle(LumaPalette.secondaryInk)
+                        }
+                    }
+
+                    if subjectName != nil {
+                        detailSection("Evaluación académica") {
+                            detailRow("Materia", subjectName ?? "Sin materia", "book.closed.fill")
+                            if let categoryName {
+                                detailRow("Categoría", categoryName, "percent")
+                            }
+                            detailRow(
+                                "Calificación",
+                                task.grade.map { "\($0.formatted(.number.precision(.fractionLength(0 ... 2)))) / 10" }
+                                    ?? task.academicEvaluationStatus?.title
+                                    ?? "No evaluable",
+                                task.academicEvaluationStatus?.symbol ?? "book.closed"
+                            )
+                        }
+                    }
+
+                    if !blockers.isEmpty || unlockedTaskName != nil {
+                        detailSection("Dependencias") {
+                            if !blockers.isEmpty {
+                                Label("Bloqueada por \(blockers.joined(separator: ", "))", systemImage: "lock.fill")
+                                    .foregroundStyle(LumaPalette.terracotta)
+                            }
+                            if let unlockedTaskName {
+                                Label("Desbloquea \(unlockedTaskName)", systemImage: "lock.open.fill")
+                                    .foregroundStyle(LumaPalette.sage)
+                            }
+                        }
+                    }
+
+                    if !task.notes.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                        detailSection("Notas") {
+                            Text(task.notes)
+                                .font(.subheadline)
+                                .foregroundStyle(LumaPalette.ink)
+                                .textSelection(.enabled)
+                        }
+                    }
+
+                    detailSection("Actividad") {
+                        detailRow("Creada", task.createdAt.formatted(date: .abbreviated, time: .shortened), "plus.circle")
+                        if let lastFocusedAt = task.lastFocusedAt {
+                            detailRow("Último avance", lastFocusedAt.formatted(date: .abbreviated, time: .shortened), "timer")
+                        }
+                        if let completedAt = task.completedAt {
+                            detailRow("Completada", completedAt.formatted(date: .abbreviated, time: .shortened), "checkmark.circle")
+                        }
+                        if task.postponementCount > 0 {
+                            detailRow("Postergaciones", "\(task.postponementCount)", "arrow.right")
+                        }
+                        detailRow(
+                            "Calendario",
+                            isCalendarSynced ? "Sincronizada" : "Sin evento asociado",
+                            isCalendarSynced ? "calendar.badge.checkmark" : "calendar.badge.minus"
+                        )
+                    }
+                }
+                .padding(18)
+            }
+        }
+        .background(Color.white.opacity(0.24))
+    }
+
+    private var actionButtons: some View {
+        VStack(spacing: 9) {
+            Button(action: onEdit) {
+                Label("Editar pendiente", systemImage: "pencil")
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.borderedProminent)
+            .tint(LumaPalette.indigo)
+
+            HStack(spacing: 8) {
+                if !task.isCompleted {
+                    Button("Empezar", systemImage: "play.fill", action: onStart)
+                        .buttonStyle(.bordered)
+                }
+                Button(
+                    task.isCompleted ? "Volver" : "Marcar hecha",
+                    systemImage: task.isCompleted ? "arrow.uturn.backward" : "checkmark",
+                    action: onToggleCompletion
+                )
+                .buttonStyle(.bordered)
+            }
+        }
+    }
+
+    private func detailSection<Content: View>(
+        _ title: String,
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text(title.uppercased())
+                .font(.caption2.weight(.bold))
+                .tracking(0.8)
+                .foregroundStyle(LumaPalette.sage)
+            content()
+                .font(.caption)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(14)
+        .background(Color.white.opacity(0.55), in: RoundedRectangle(cornerRadius: 14))
+    }
+
+    private func detailRow(_ title: String, _ value: String, _ symbol: String) -> some View {
+        HStack(alignment: .top, spacing: 9) {
+            Image(systemName: symbol)
+                .foregroundStyle(LumaPalette.indigo)
+                .frame(width: 17)
+            Text(title)
+                .foregroundStyle(LumaPalette.secondaryInk)
+            Spacer(minLength: 8)
+            Text(value)
+                .foregroundStyle(LumaPalette.ink)
+                .multilineTextAlignment(.trailing)
+        }
+    }
+
+    private var statusTitle: String {
+        if !blockers.isEmpty, !task.isCompleted { return "Bloqueada" }
+        if let evaluation = task.academicEvaluationStatus { return evaluation.title }
+        return task.isCompleted ? "Completada" : "Pendiente"
+    }
+
+    private var statusSymbol: String {
+        if !blockers.isEmpty, !task.isCompleted { return "lock.fill" }
+        if let evaluation = task.academicEvaluationStatus { return evaluation.symbol }
+        return task.isCompleted ? "checkmark.circle.fill" : "circle"
+    }
+
+    private var statusColor: Color {
+        if !blockers.isEmpty, !task.isCompleted { return LumaPalette.terracotta }
+        if task.isCompleted { return LumaPalette.sage }
+        if task.academicEvaluationStatus == .awaitingGrade { return LumaPalette.mustard }
+        return LumaPalette.indigo
     }
 }

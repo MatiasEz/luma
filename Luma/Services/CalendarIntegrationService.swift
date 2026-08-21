@@ -247,6 +247,11 @@ final class CalendarIntegrationService {
         }
     }
 
+    func isTaskSynced(_ taskID: UUID) -> Bool {
+        guard isAuthorized, isEnabled else { return false }
+        return trackedEvent(for: taskID) != nil
+    }
+
     private var targetCalendar: EKCalendar? {
         if let selectedCalendarIdentifier,
            let selected = store.calendar(withIdentifier: selectedCalendarIdentifier),

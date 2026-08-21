@@ -107,6 +107,8 @@ final class LumaChatRecord {
     var actionEnergyRaw: String?
     var actionAvailableMinutes: Int?
     var actionDurationMinutes: Int?
+    var actionDate: Date?
+    var actionNumber: Double?
     var appliedAt: Date?
 
     init(
@@ -130,6 +132,8 @@ final class LumaChatRecord {
         actionEnergyRaw = suggestedAction?.energyPreference?.rawValue
         actionAvailableMinutes = suggestedAction?.availableMinutes
         actionDurationMinutes = suggestedAction?.durationMinutes
+        actionDate = suggestedAction?.dateValue
+        actionNumber = suggestedAction?.numericValue
         self.appliedAt = appliedAt
     }
 
@@ -148,7 +152,9 @@ final class LumaChatRecord {
             taskID: actionTaskID,
             energyPreference: actionEnergyRaw.flatMap(EnergyPreference.init(rawValue:)),
             availableMinutes: actionAvailableMinutes,
-            durationMinutes: actionDurationMinutes
+            durationMinutes: actionDurationMinutes,
+            dateValue: actionDate,
+            numericValue: actionNumber
         )
     }
 

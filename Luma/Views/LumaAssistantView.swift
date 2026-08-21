@@ -372,6 +372,7 @@ struct LumaAssistantView: View {
         let context = LumaAssistantContextBuilder.makeContext(
             tasks: tasks,
             subjects: subjects,
+            subjectGradeItems: gradeItems,
             recommendations: recommendations,
             agenda: appState.dailyAgenda,
             commitments: calendarService.commitments,
@@ -470,6 +471,38 @@ struct LumaAssistantView: View {
                 action.label.trimmingCharacters(in: .whitespacesAndNewlines).prefix(160)
             )
             return validated
+        case .changeDeadline:
+            guard hasDeadlineIntent(question),
+                  let taskID = action.taskID,
+                  let date = action.dateValue,
+                  tasks.contains(where: { $0.id == taskID })
+            else { return nil }
+            var validated = action
+            validated.dateValue = Calendar.current.date(
+                bySettingHour: 20,
+                minute: 0,
+                second: 0,
+                of: date
+            ) ?? date
+            return validated
+        case .setGrade:
+            guard hasGradeIntent(question),
+                  let taskID = action.taskID,
+                  let value = action.numericValue,
+                  (0 ... 10).contains(value),
+                  tasks.contains(where: {
+                      $0.id == taskID && $0.academicSubjectID != nil && $0.subjectGradeItemID != nil
+                  })
+            else { return nil }
+            return action
+        case .changeDuration:
+            guard hasDurationIntent(question),
+                  let taskID = action.taskID,
+                  let duration = action.durationMinutes,
+                  (5 ... 480).contains(duration),
+                  tasks.contains(where: { $0.id == taskID })
+            else { return nil }
+            return action
         }
     }
 
@@ -481,6 +514,9 @@ struct LumaAssistantView: View {
         return switch action.kind {
         case .replan: hasReplanIntent(question)
         case .renameTask: hasRenameIntent(question)
+        case .changeDeadline: hasDeadlineIntent(question)
+        case .setGrade: hasGradeIntent(question)
+        case .changeDuration: hasDurationIntent(question)
         case .startFocus, .completeTask: true
         }
     }
@@ -504,6 +540,28 @@ struct LumaAssistantView: View {
             "reacomod", "replan", "ordenar mi dia", "ordenar el dia", "estoy cansad",
             "tengo mas tiempo", "hora libre", "minutos libres", "tiempo disponible",
             "cambiar prioridad", "cambia la prioridad", "energia",
+        ].contains(where: normalized.contains)
+    }
+
+    private func hasDeadlineIntent(_ text: String) -> Bool {
+        let normalized = normalizedIntent(text)
+        return [
+            "mover", "move", "posterg", "pasar para", "cambiar la fecha", "cambia la fecha",
+            "vence", "vencimiento", "para manana", "para el ",
+        ].contains(where: normalized.contains)
+    }
+
+    private func hasGradeIntent(_ text: String) -> Bool {
+        let normalized = normalizedIntent(text)
+        return [
+            "nota", "calificacion", "saque", "me pusieron", "cargar un", "poner un",
+        ].contains(where: normalized.contains)
+    }
+
+    private func hasDurationIntent(_ text: String) -> Bool {
+        let normalized = normalizedIntent(text)
+        return [
+            "dura", "duracion", "tiempo estimado", "cambiar el tiempo", "cambia el tiempo",
         ].contains(where: normalized.contains)
     }
 
@@ -535,6 +593,19 @@ struct LumaAssistantView: View {
                     newTitle,
                     options: [.caseInsensitive, .diacriticInsensitive]
                 ) != .orderedSame
+        case .changeDeadline:
+            return action.taskID.map { id in tasks.contains(where: { $0.id == id }) } == true
+                && action.dateValue != nil
+        case .setGrade:
+            guard let taskID = action.taskID,
+                  let value = action.numericValue,
+                  (0 ... 10).contains(value),
+                  let task = tasks.first(where: { $0.id == taskID })
+            else { return false }
+            return task.academicSubjectID != nil && task.subjectGradeItemID != nil
+        case .changeDuration:
+            return action.taskID.map { id in tasks.contains(where: { $0.id == id }) } == true
+                && action.durationMinutes.map { (5 ... 480).contains($0) } == true
         }
     }
 
@@ -573,6 +644,10 @@ struct LumaAssistantView: View {
         replanProposal = nil
         replanRecordID = nil
         Task { await notificationService.scheduleAgenda(appState.dailyAgenda, tasks: tasks) }
+        appState.registerUndo(message: "Plan reacomodado") {
+            appState.restoreReplan(proposal)
+            Task { await notificationService.scheduleAgenda(appState.dailyAgenda, tasks: tasks) }
+        }
     }
 
     private func applyConfirmed(_ action: LumaChatSuggestedAction, from record: LumaChatRecord) {
@@ -592,13 +667,88 @@ struct LumaAssistantView: View {
             task.markCompleted()
             appState.replanDaily(from: tasks, planner: planner, preference: appState.energyPreference)
             rebuildAgenda()
+            try? calendarService.syncTask(task)
+            appState.registerUndo(message: "Tarea completada") {
+                task.restore()
+                try? modelContext.save()
+                try? calendarService.syncTask(task)
+                appState.refreshPlan()
+                rebuildAgenda()
+            }
         case .renameTask:
             guard let taskID = action.taskID,
                   let task = tasks.first(where: { $0.id == taskID })
             else { return }
+            let previousTitle = task.title
             task.title = action.label.trimmingCharacters(in: .whitespacesAndNewlines)
+            task.touch()
             try? calendarService.syncTask(task)
             appState.refreshPlan()
+            appState.registerUndo(message: "Nombre actualizado") {
+                task.title = previousTitle
+                task.touch()
+                try? modelContext.save()
+                try? calendarService.syncTask(task)
+                appState.refreshPlan()
+            }
+        case .changeDeadline:
+            guard let taskID = action.taskID,
+                  let date = action.dateValue,
+                  let task = tasks.first(where: { $0.id == taskID })
+            else { return }
+            let previous = task.deadline
+            task.deadline = date
+            task.touch()
+            try? calendarService.syncTask(task)
+            appState.refreshPlan()
+            rebuildAgenda()
+            appState.registerUndo(message: "Fecha actualizada") {
+                task.deadline = previous
+                task.touch()
+                try? modelContext.save()
+                try? calendarService.syncTask(task)
+                appState.refreshPlan()
+                rebuildAgenda()
+            }
+        case .setGrade:
+            guard let taskID = action.taskID,
+                  let value = action.numericValue,
+                  let task = tasks.first(where: { $0.id == taskID })
+            else { return }
+            let previousGrade = task.grade
+            let wasCompleted = task.isCompleted
+            task.grade = value
+            if !task.isCompleted { task.markCompleted() }
+            task.touch()
+            try? calendarService.syncTask(task)
+            appState.refreshPlan()
+            rebuildAgenda()
+            appState.registerUndo(message: "Calificación guardada") {
+                task.grade = previousGrade
+                if !wasCompleted { task.restore() }
+                task.touch()
+                try? modelContext.save()
+                try? calendarService.syncTask(task)
+                appState.refreshPlan()
+                rebuildAgenda()
+            }
+        case .changeDuration:
+            guard let taskID = action.taskID,
+                  let duration = action.durationMinutes,
+                  let task = tasks.first(where: { $0.id == taskID })
+            else { return }
+            let previous = task.estimatedMinutes
+            task.estimatedMinutes = duration
+            task.touch()
+            appState.refreshPlan()
+            rebuildAgenda()
+            appState.registerUndo(message: "Duración actualizada") {
+                task.estimatedMinutes = previous
+                task.touch()
+                try? modelContext.save()
+                appState.refreshPlan()
+                rebuildAgenda()
+            }
         }
 
         record.appliedAt = .now
@@ -635,6 +785,17 @@ struct LumaAssistantView: View {
                 tasks.first(where: { $0.id == id })?.title
             } ?? "la tarea elegida"
             return "Cambiar “\(currentTitle)” por “\(action.label)”."
+        case .changeDeadline:
+            let task = action.taskID.flatMap { id in tasks.first(where: { $0.id == id })?.title } ?? "la tarea elegida"
+            let date = action.dateValue?.formatted(date: .long, time: .omitted) ?? "la nueva fecha"
+            return "Mover “\(task)” al \(date) y actualizar su evento del calendario."
+        case .setGrade:
+            let task = action.taskID.flatMap { id in tasks.first(where: { $0.id == id })?.title } ?? "la evaluación"
+            let value = action.numericValue?.formatted(.number.precision(.fractionLength(0 ... 2))) ?? "la nota indicada"
+            return "Guardar \(value) / 10 en “\(task)” y recalcular la materia."
+        case .changeDuration:
+            let task = action.taskID.flatMap { id in tasks.first(where: { $0.id == id })?.title } ?? "la tarea elegida"
+            return "Cambiar la duración estimada de “\(task)” a \(action.durationMinutes ?? 0) minutos."
         }
     }
 
@@ -645,6 +806,9 @@ struct LumaAssistantView: View {
         case .startFocus:
             action.durationMinutes.map { "Iniciar \($0) min" } ?? "Iniciar sesión"
         case .completeTask: "Confirmar acción"
+        case .changeDeadline: "Cambiar fecha"
+        case .setGrade: "Guardar nota"
+        case .changeDuration: "Cambiar duración"
         }
     }
 
@@ -654,6 +818,9 @@ struct LumaAssistantView: View {
         case .startFocus: "timer"
         case .completeTask: "checkmark.circle"
         case .renameTask: "pencil"
+        case .changeDeadline: "calendar.badge.clock"
+        case .setGrade: "checkmark.seal"
+        case .changeDuration: "timer"
         }
     }
 

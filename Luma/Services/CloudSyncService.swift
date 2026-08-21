@@ -43,6 +43,7 @@ final class CloudSyncService {
     private(set) var state: CloudSyncState
     private(set) var lastSyncedAt: Date?
     private(set) var userID: UUID?
+    private(set) var lastErrorMessage: String?
 
     init(bundle: Bundle = .main) {
         let rawURL = bundle.object(forInfoDictionaryKey: "LUMA_SUPABASE_URL") as? String
@@ -74,6 +75,12 @@ final class CloudSyncService {
     func queueTaskDeletion(_ taskID: UUID) {
         var pending = pendingTaskDeletionIDs
         pending.insert(taskID)
+        savePendingTaskDeletionIDs(pending)
+    }
+
+    func cancelTaskDeletion(_ taskID: UUID) {
+        var pending = pendingTaskDeletionIDs
+        pending.remove(taskID)
         savePendingTaskDeletionIDs(pending)
     }
 
@@ -126,10 +133,12 @@ final class CloudSyncService {
             )
             try context.save()
             lastSyncedAt = .now
+            lastErrorMessage = nil
             state = .synced
         } catch let error as URLError where error.code == .notConnectedToInternet {
             state = .offline
         } catch {
+            lastErrorMessage = error.localizedDescription
             state = .failed(error.localizedDescription)
         }
     }
@@ -213,9 +222,15 @@ final class CloudSyncService {
     ) async throws {
         let remoteTasks: [CloudTask] = try await client.from("tasks")
             .select().eq("user_id", value: userID).execute().value
-        let taskIDs = Set(tasks.map(\.id))
-        for record in remoteTasks where !taskIDs.contains(record.id) {
-            context.insert(record.local(formatter: isoFormatter))
+        let tasksByID = Dictionary(uniqueKeysWithValues: tasks.map { ($0.id, $0) })
+        for record in remoteTasks {
+            if let local = tasksByID[record.id] {
+                if record.updatedDate(formatter: isoFormatter) > local.updatedAt {
+                    record.apply(to: local, formatter: isoFormatter)
+                }
+            } else {
+                context.insert(record.local(formatter: isoFormatter))
+            }
         }
 
         let remoteSessions: [CloudFocusSession] = try await client.from("focus_sessions")
@@ -248,16 +263,37 @@ final class CloudSyncService {
 
         let remoteSubjects: [CloudAcademicSubject] = try await client.from("academic_subjects")
             .select().eq("user_id", value: userID).execute().value
-        let subjectIDs = Set(subjects.map(\.id))
-        for record in remoteSubjects where !subjectIDs.contains(record.id) {
-            context.insert(record.local(formatter: isoFormatter))
+        let subjectsByID = Dictionary(uniqueKeysWithValues: subjects.map { ($0.id, $0) })
+        for record in remoteSubjects {
+            if let local = subjectsByID[record.id] {
+                let remoteUpdated = isoFormatter.date(from: record.updatedAt) ?? .distantPast
+                if remoteUpdated > local.updatedAt {
+                    local.name = record.name
+                    local.targetGrade = record.targetGrade
+                    local.updatedAt = remoteUpdated
+                    local.isArchived = record.isArchived
+                }
+            } else {
+                context.insert(record.local(formatter: isoFormatter))
+            }
         }
 
         let remoteGradeItems: [CloudSubjectGradeItem] = try await client.from("subject_grade_items")
             .select().eq("user_id", value: userID).execute().value
-        let gradeItemIDs = Set(subjectGradeItems.map(\.id))
-        for record in remoteGradeItems where !gradeItemIDs.contains(record.id) {
-            context.insert(record.local(formatter: isoFormatter))
+        let itemsByID = Dictionary(uniqueKeysWithValues: subjectGradeItems.map { ($0.id, $0) })
+        for record in remoteGradeItems {
+            if let local = itemsByID[record.id] {
+                let remoteUpdated = isoFormatter.date(from: record.updatedAt) ?? .distantPast
+                if remoteUpdated > local.updatedAt {
+                    local.subjectID = record.subjectID
+                    local.title = record.title
+                    local.weightPercent = record.weightPercent
+                    local.updatedAt = remoteUpdated
+                    local.isArchived = record.isArchived
+                }
+            } else {
+                context.insert(record.local(formatter: isoFormatter))
+            }
         }
     }
 }
@@ -413,7 +449,7 @@ private struct CloudTask: Codable {
         focusedMinutes = local.focusedMinutes
         focusSessionCount = local.focusSessionCount
         lastFocusedAt = local.lastFocusedAt.map(formatter.string(from:))
-        updatedAt = formatter.string(from: .now)
+        updatedAt = formatter.string(from: local.updatedAt)
     }
 
     func local(formatter: ISO8601DateFormatter) -> LumaTask {
@@ -431,6 +467,7 @@ private struct CloudTask: Codable {
             grade: grade,
             status: TaskStatus(rawValue: status) ?? .pending,
             createdAt: formatter.date(from: createdAt) ?? .now,
+            updatedAt: formatter.date(from: updatedAt) ?? formatter.date(from: createdAt) ?? .now,
             completedAt: completedAt.flatMap(formatter.date(from:)),
             postponementCount: postponementCount,
             unlocksAnotherTask: unlocksAnotherTask,
@@ -440,6 +477,33 @@ private struct CloudTask: Codable {
             focusSessionCount: focusSessionCount,
             lastFocusedAt: lastFocusedAt.flatMap(formatter.date(from:))
         )
+    }
+
+    func updatedDate(formatter: ISO8601DateFormatter) -> Date {
+        formatter.date(from: updatedAt) ?? formatter.date(from: createdAt) ?? .distantPast
+    }
+
+    func apply(to local: LumaTask, formatter: ISO8601DateFormatter) {
+        local.title = title
+        local.areaRaw = area
+        local.deadline = deadline.flatMap(formatter.date(from:))
+        local.estimatedMinutes = estimatedMinutes
+        local.energyRaw = energy
+        local.impactRaw = impact
+        local.academicWeight = academicWeight
+        local.academicSubjectID = academicSubjectID
+        local.subjectGradeItemID = subjectGradeItemID
+        local.grade = grade
+        local.statusRaw = status
+        local.completedAt = completedAt.flatMap(formatter.date(from:))
+        local.postponementCount = postponementCount
+        local.unlocksAnotherTask = unlocksAnotherTask
+        local.unlocksTaskID = unlocksTaskID
+        local.notes = notes
+        local.focusedMinutes = focusedMinutes
+        local.focusSessionCount = focusSessionCount
+        local.lastFocusedAt = lastFocusedAt.flatMap(formatter.date(from:))
+        local.updatedAt = updatedDate(formatter: formatter)
     }
 }
 
@@ -566,6 +630,8 @@ private struct CloudChatMessage: Codable {
     let actionEnergy: String?
     let actionAvailableMinutes: Int?
     let actionDurationMinutes: Int?
+    let actionDate: String?
+    let actionNumber: Double?
     let appliedAt: String?
 
     enum CodingKeys: String, CodingKey {
@@ -579,6 +645,8 @@ private struct CloudChatMessage: Codable {
         case actionEnergy = "action_energy"
         case actionAvailableMinutes = "action_available_minutes"
         case actionDurationMinutes = "action_duration_minutes"
+        case actionDate = "action_date"
+        case actionNumber = "action_number"
         case appliedAt = "applied_at"
     }
 
@@ -596,6 +664,8 @@ private struct CloudChatMessage: Codable {
         actionEnergy = local.actionEnergyRaw
         actionAvailableMinutes = local.actionAvailableMinutes
         actionDurationMinutes = local.actionDurationMinutes
+        actionDate = local.actionDate.map(formatter.string(from:))
+        actionNumber = local.actionNumber
         appliedAt = local.appliedAt.map(formatter.string(from:))
     }
 
@@ -614,7 +684,9 @@ private struct CloudChatMessage: Codable {
                     taskID: actionTaskID,
                     energyPreference: actionEnergy.flatMap(EnergyPreference.init(rawValue:)),
                     availableMinutes: actionAvailableMinutes,
-                    durationMinutes: actionDurationMinutes
+                    durationMinutes: actionDurationMinutes,
+                    dateValue: actionDate.flatMap(formatter.date(from:)),
+                    numericValue: actionNumber
                 )
             },
             createdAt: formatter.date(from: createdAt) ?? .now,

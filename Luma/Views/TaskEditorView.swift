@@ -262,6 +262,8 @@ struct TaskEditorView: View {
             task.restore()
         }
 
+        task.touch()
+
         try? modelContext.save()
         try? calendarService.syncTask(task)
         appState.refreshPlan()

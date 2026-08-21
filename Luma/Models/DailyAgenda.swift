@@ -241,6 +241,63 @@ struct DailyScheduler {
         return result.sorted { $0.startMinuteOfDay < $1.startMinuteOfDay }
     }
 
+    func movedBlocks(
+        _ blocks: [AgendaBlockSnapshot],
+        taskID: UUID,
+        proposedStartMinute: Int,
+        availabilityWindows: [AvailabilityWindow],
+        busyBlocks: [BusyTimeBlock]
+    ) -> [AgendaBlockSnapshot] {
+        guard let moving = blocks.first(where: { $0.taskID == taskID }) else { return blocks }
+        let freeWindows = freeAvailabilityWindows(in: availabilityWindows, busyBlocks: busyBlocks)
+        let movingCandidates = candidateStarts(duration: moving.durationMinutes, in: freeWindows)
+        guard let movingStart = movingCandidates.min(by: {
+            abs($0 - proposedStartMinute) < abs($1 - proposedStartMinute)
+        }) else { return blocks }
+
+        var placed = [AgendaBlockSnapshot(
+            taskID: moving.taskID,
+            startMinuteOfDay: movingStart,
+            durationMinutes: moving.durationMinutes
+        )]
+
+        for block in blocks.filter({ $0.taskID != taskID }).sorted(by: {
+            $0.startMinuteOfDay < $1.startMinuteOfDay
+        }) {
+            let candidates = candidateStarts(duration: block.durationMinutes, in: freeWindows)
+                .filter { start in
+                    let end = start + block.durationMinutes
+                    return !placed.contains { existing in
+                        start < existing.endMinuteOfDay && end > existing.startMinuteOfDay
+                    }
+                }
+            let start = candidates.first(where: { $0 >= block.startMinuteOfDay })
+                ?? candidates.first
+            guard let start else { continue }
+            placed.append(AgendaBlockSnapshot(
+                taskID: block.taskID,
+                startMinuteOfDay: start,
+                durationMinutes: block.durationMinutes
+            ))
+        }
+
+        return placed.sorted { $0.startMinuteOfDay < $1.startMinuteOfDay }
+    }
+
+    private func candidateStarts(
+        duration: Int,
+        in windows: [AvailabilityWindow]
+    ) -> [Int] {
+        windows.flatMap { window in
+            guard window.durationMinutes >= duration else { return [Int]() }
+            return Array(stride(
+                from: window.startMinuteOfDay,
+                through: window.endMinuteOfDay - duration,
+                by: 5
+            ))
+        }
+    }
+
     func defaultStartMinute(now: Date = .now) -> Int {
         let hour = calendar.component(.hour, from: now)
         let minute = calendar.component(.minute, from: now)

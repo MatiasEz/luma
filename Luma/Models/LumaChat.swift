@@ -18,6 +18,9 @@ enum LumaChatActionKind: String, Equatable {
     case startFocus
     case completeTask
     case renameTask
+    case changeDeadline
+    case setGrade
+    case changeDuration
 }
 
 struct LumaChatSuggestedAction: Identifiable, Equatable {
@@ -28,6 +31,8 @@ struct LumaChatSuggestedAction: Identifiable, Equatable {
     var energyPreference: EnergyPreference?
     var availableMinutes: Int?
     var durationMinutes: Int?
+    var dateValue: Date?
+    var numericValue: Double?
 }
 
 struct LumaChatReply: Equatable {
@@ -61,6 +66,7 @@ enum LumaAssistantContextBuilder {
     static func makeContext(
         tasks: [LumaTask],
         subjects: [AcademicSubject] = [],
+        subjectGradeItems: [SubjectGradeItem] = [],
         recommendations: [PlanRecommendation],
         agenda: DailyAgendaSnapshot?,
         commitments: [CalendarCommitment],
@@ -80,6 +86,10 @@ enum LumaAssistantContextBuilder {
         let subjectNamesByID = Dictionary(
             uniqueKeysWithValues: activeSubjects.map { ($0.id, $0.name) }
         )
+        let activeGradeItems = subjectGradeItems.filter { !$0.isArchived }
+        let gradeItemNamesByID = Dictionary(
+            uniqueKeysWithValues: activeGradeItems.map { ($0.id, $0.title) }
+        )
 
         let pending = tasks
             .filter { !$0.isCompleted }
@@ -91,24 +101,40 @@ enum LumaAssistantContextBuilder {
                 case (.none, .none): $0.createdAt < $1.createdAt
                 }
             }
-        let taskLines = pending.prefix(36).map { task in
+        let relevantTasks = tasks
+            .filter { !$0.isCompleted || $0.academicEvaluationStatus == .awaitingGrade }
+            .sorted {
+                switch ($0.deadline, $1.deadline) {
+                case let (left?, right?): left < right
+                case (.some, .none): true
+                case (.none, .some): false
+                case (.none, .none): $0.createdAt < $1.createdAt
+                }
+            }
+        let taskLines = relevantTasks.prefix(40).map { task in
             let deadline = task.deadline.map(dateFormatter.string(from:)) ?? "sin fecha"
             let weight = task.academicWeight.map { " · ponderación \(Int($0))%" } ?? ""
             let subject = task.academicSubjectID
                 .flatMap { subjectNamesByID[$0] }
                 .map { " · materia \($0)" } ?? ""
+            let category = task.subjectGradeItemID
+                .flatMap { gradeItemNamesByID[$0] }
+                .map { " · categoría \($0)" } ?? ""
+            let evaluation = task.academicEvaluationStatus.map { " · estado \($0.title.lowercased())" } ?? ""
+            let grade = task.grade.map { " · nota \($0.formatted(.number.precision(.fractionLength(0 ... 2))))/10" } ?? ""
             let unlock = task.unlocksTaskID.flatMap { targetID in
                 tasks.first { $0.id == targetID }?.title
             }.map { " · al completarse desbloquea \($0)" }
                 ?? (task.unlocksAnotherTask ? " · desbloquea otra tarea" : "")
             let blockerNames = TaskDependencyResolver.blockers(for: task.id, in: tasks).map(\.title)
             let blocked = blockerNames.isEmpty ? "" : " · BLOQUEADA por \(blockerNames.joined(separator: ", "))"
-            return "- id=\(task.id.uuidString) · \(task.title) · \(task.area.title)\(subject) · vence \(deadline) · quedan \(task.remainingEstimatedMinutes) min · energía \(task.energy.title.lowercased()) · impacto \(task.impact.title.lowercased()) · postergada \(task.postponementCount) veces\(weight)\(unlock)\(blocked)"
+            return "- id=\(task.id.uuidString) · \(task.title) · \(task.area.title)\(subject)\(category)\(evaluation)\(grade) · vence \(deadline) · duración estimada \(task.estimatedMinutes) min · quedan \(task.remainingEstimatedMinutes) min · energía \(task.energy.title.lowercased()) · impacto \(task.impact.title.lowercased()) · postergada \(task.postponementCount) veces\(weight)\(unlock)\(blocked)"
         }.joined(separator: "\n")
 
         let subjectLines = activeSubjects.map { subject in
             let pendingCount = pending.filter { $0.academicSubjectID == subject.id }.count
-            return "- id=\(subject.id.uuidString) · \(subject.name) · \(pendingCount) pendientes"
+            let target = subject.targetGrade.map { " · objetivo \($0.formatted(.number.precision(.fractionLength(0 ... 2))))/10" } ?? ""
+            return "- id=\(subject.id.uuidString) · \(subject.name)\(target) · \(pendingCount) pendientes"
         }.joined(separator: "\n")
 
         let recommendationLines = recommendations.enumerated().map { index, item in

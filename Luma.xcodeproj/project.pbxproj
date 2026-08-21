@@ -56,12 +56,14 @@
 		9C0B6272D11DFE663A39B1BE /* InsightsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8A5DB36102232D48611B3891 /* InsightsView.swift */; };
 		9CEBE2944B6B542C10BC5C91 /* AppState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 03DCDF371F4582F27AD7932E /* AppState.swift */; };
 		A04079A0BF74DB6A5C2576AC /* LocalAIEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = CD8B651929BE9806155F9EE3 /* LocalAIEngine.swift */; };
+		A70EFDBBA7FE0E5A91C23250 /* AcademicInsights.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2FA0A596E52B50EF7243590 /* AcademicInsights.swift */; };
 		AA275BE380B7558509E462D6 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0C5A65312921C562F9563CE /* SettingsView.swift */; };
 		AD386679CA0AC92E4107BCEE /* TaskPlanner.swift in Sources */ = {isa = PBXBuildFile; fileRef = D301ED0FDBC3DE160922AE16 /* TaskPlanner.swift */; };
 		AEBE8D175814753705567E99 /* LumaChatIntentResolver.swift in Sources */ = {isa = PBXBuildFile; fileRef = 24DE22D0DE2546AC5CEC9162 /* LumaChatIntentResolver.swift */; };
 		B35950B0BE29CE420E34CA43 /* StudyScheduleBuilder.swift in Sources */ = {isa = PBXBuildFile; fileRef = A38E31480577EF7AD17F04AD /* StudyScheduleBuilder.swift */; };
 		B37EF7FD27B1DADE64AE3B82 /* QuickCaptureView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 495AC123845CCD6AA957D606 /* QuickCaptureView.swift */; };
 		B6A06440A5754421E770541C /* UpdateService.swift in Sources */ = {isa = PBXBuildFile; fileRef = B03930DD32D1CB32EC85F8BC /* UpdateService.swift */; };
+		BB188B3CB628D8EE320B4E29 /* AttentionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A87D6F894D645B0916425C26 /* AttentionView.swift */; };
 		BD1B8159D76F8509CBF877F7 /* AIDownloadProgressView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 53CF268B6251524D442FD55A /* AIDownloadProgressView.swift */; };
 		C0B3BD10CEAAA815B8CF1971 /* AppShellView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C7F052A498BC201F4495D27C /* AppShellView.swift */; };
 		C46F26120634EAA588BD1CCF /* rain_window.mp3 in Resources */ = {isa = PBXBuildFile; fileRef = FA969322A51D8BC9506137CF /* rain_window.mp3 */; };
@@ -127,8 +129,10 @@
 		9A00C921F38EFD60386F45F3 /* FocusSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FocusSession.swift; sourceTree = "<group>"; };
 		9A4E5D4637E73344AD3D6264 /* NotificationService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationService.swift; sourceTree = "<group>"; };
 		A20566F4AE966906840EBBD7 /* BehaviorLearningTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BehaviorLearningTests.swift; sourceTree = "<group>"; };
+		A2FA0A596E52B50EF7243590 /* AcademicInsights.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AcademicInsights.swift; sourceTree = "<group>"; };
 		A38E31480577EF7AD17F04AD /* StudyScheduleBuilder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StudyScheduleBuilder.swift; sourceTree = "<group>"; };
 		A47D21F5C98A2D72405BD944 /* FocusRoomView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FocusRoomView.swift; sourceTree = "<group>"; };
+		A87D6F894D645B0916425C26 /* AttentionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AttentionView.swift; sourceTree = "<group>"; };
 		B03930DD32D1CB32EC85F8BC /* UpdateService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UpdateService.swift; sourceTree = "<group>"; };
 		B113A918052719BF4B9CB497 /* AcademicTaskMatcher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AcademicTaskMatcher.swift; sourceTree = "<group>"; };
 		B8FAB1D7CDD5248DA66C9234 /* AcademicSubject.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AcademicSubject.swift; sourceTree = "<group>"; };
@@ -184,6 +188,7 @@
 				5D4A7C6906B3210E18A3E986 /* AcademicTaskFields.swift */,
 				CF8A984BF0B58584A40CBF92 /* AgendaSettingsView.swift */,
 				C7F052A498BC201F4495D27C /* AppShellView.swift */,
+				A87D6F894D645B0916425C26 /* AttentionView.swift */,
 				DCC9FF1AAA11ED6C31E67DA9 /* BalanceView.swift */,
 				3736DCE5466EE1EDA97731BC /* DashboardView.swift */,
 				A47D21F5C98A2D72405BD944 /* FocusRoomView.swift */,
@@ -221,6 +226,7 @@
 		71B4472CB3AD2E35BFAE9D9C /* Models */ = {
 			isa = PBXGroup;
 			children = (
+				A2FA0A596E52B50EF7243590 /* AcademicInsights.swift */,
 				B8FAB1D7CDD5248DA66C9234 /* AcademicSubject.swift */,
 				03DCDF371F4582F27AD7932E /* AppState.swift */,
 				7057F6DE557A73C0192843CF /* DailyAgenda.swift */,
@@ -432,12 +438,14 @@
 			buildActionMask = 2147483647;
 			files = (
 				BD1B8159D76F8509CBF877F7 /* AIDownloadProgressView.swift in Sources */,
+				A70EFDBBA7FE0E5A91C23250 /* AcademicInsights.swift in Sources */,
 				21E43C806344A6E19493D47A /* AcademicSubject.swift in Sources */,
 				5C033DCA0FA99AEE102CB81F /* AcademicTaskFields.swift in Sources */,
 				59CAF46EE70650EEC16F1602 /* AcademicTaskMatcher.swift in Sources */,
 				5A26FB298C5FF25F3752083B /* AgendaSettingsView.swift in Sources */,
 				C0B3BD10CEAAA815B8CF1971 /* AppShellView.swift in Sources */,
 				9CEBE2944B6B542C10BC5C91 /* AppState.swift in Sources */,
+				BB188B3CB628D8EE320B4E29 /* AttentionView.swift in Sources */,
 				984E889D4E57662A8E6CC973 /* BackupService.swift in Sources */,
 				10338C3F96ADBB8FD369AFF6 /* BalanceView.swift in Sources */,
 				CA7A81238D7C6EA5C870EC90 /* BehaviorLearningEngine.swift in Sources */,
