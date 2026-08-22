@@ -7,24 +7,53 @@ struct FocusRoomView: View {
     @Environment(\.modelContext) private var modelContext
     @Query(sort: \LumaTask.createdAt) private var tasks: [LumaTask]
 
-    @State private var selectedTaskID: UUID?
-    @State private var durationMinutes = 25
-    @State private var remainingSeconds = 25 * 60
-    @State private var isRunning = false
-    @State private var completedSession = false
-    @State private var elapsedSeconds = 0
-    @State private var lastRecordedMinutes = 0
-    @State private var sessionStartedAt: Date?
-    @State private var recordedSession: FocusSession?
-    @State private var ambientAudio = FocusAmbientAudioPlayer()
+    @State private var viewModel = FocusRoomViewModel()
+
+    private var selectedTaskID: UUID? {
+        get { viewModel.selectedTaskID }
+        nonmutating set { viewModel.selectedTaskID = newValue }
+    }
+    private var durationMinutes: Int {
+        get { viewModel.durationMinutes }
+        nonmutating set { viewModel.durationMinutes = newValue }
+    }
+    private var remainingSeconds: Int {
+        get { viewModel.remainingSeconds }
+        nonmutating set { viewModel.remainingSeconds = newValue }
+    }
+    private var isRunning: Bool {
+        get { viewModel.isRunning }
+        nonmutating set { viewModel.isRunning = newValue }
+    }
+    private var completedSession: Bool {
+        get { viewModel.completedSession }
+        nonmutating set { viewModel.completedSession = newValue }
+    }
+    private var elapsedSeconds: Int {
+        get { viewModel.elapsedSeconds }
+        nonmutating set { viewModel.elapsedSeconds = newValue }
+    }
+    private var lastRecordedMinutes: Int {
+        get { viewModel.lastRecordedMinutes }
+        nonmutating set { viewModel.lastRecordedMinutes = newValue }
+    }
+    private var sessionStartedAt: Date? {
+        get { viewModel.sessionStartedAt }
+        nonmutating set { viewModel.sessionStartedAt = newValue }
+    }
+    private var recordedSession: FocusSession? {
+        get { viewModel.recordedSession }
+        nonmutating set { viewModel.recordedSession = newValue }
+    }
+    private var ambientAudio: FocusAmbientAudioPlayer { viewModel.ambientAudio }
 
     private let timer = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
 
     private var pendingTasks: [LumaTask] {
-        tasks.filter { !$0.isCompleted && !TaskDependencyResolver.isBlocked($0, in: tasks) }
+        viewModel.pendingTasks(from: tasks)
     }
     private var selectedTask: LumaTask? {
-        pendingTasks.first { $0.id == selectedTaskID } ?? pendingTasks.first
+        viewModel.selectedTask(from: tasks)
     }
 
     var body: some View {
@@ -387,11 +416,11 @@ struct FocusRoomView: View {
     }
 
     private var timeString: String {
-        String(format: "%02d:%02d", remainingSeconds / 60, remainingSeconds % 60)
+        viewModel.timeString
     }
 
     private var durationOptions: [Int] {
-        Array(Set([15, 25, 45, 60, durationMinutes])).sorted()
+        viewModel.durationOptions
     }
 
     private var sessionSummary: String {
@@ -414,14 +443,7 @@ struct FocusRoomView: View {
     }
 
     private func reset() {
-        isRunning = false
-        ambientAudio.stop()
-        completedSession = false
-        elapsedSeconds = 0
-        lastRecordedMinutes = 0
-        sessionStartedAt = nil
-        recordedSession = nil
-        remainingSeconds = durationMinutes * 60
+        viewModel.reset()
     }
 
     private func finishSessionEarly() {

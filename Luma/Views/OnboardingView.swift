@@ -10,10 +10,20 @@ struct OnboardingView: View {
     @Environment(\.modelContext) private var modelContext
     @Query(sort: \LumaProfile.createdAt) private var profiles: [LumaProfile]
 
-    @State private var step = 0
-    @State private var selectedAreas: Set<LifeArea> = [.university, .home, .rest]
-    @State private var energyPeak: EnergyPeak = .afternoon
-    @State private var loadedProfile = false
+    @State private var viewModel = OnboardingViewModel()
+
+    private var step: Int {
+        get { viewModel.step }
+        nonmutating set { viewModel.step = newValue }
+    }
+    private var selectedAreas: Set<LifeArea> {
+        get { viewModel.selectedAreas }
+        nonmutating set { viewModel.selectedAreas = newValue }
+    }
+    private var energyPeak: EnergyPeak {
+        get { viewModel.energyPeak }
+        nonmutating set { viewModel.energyPeak = newValue }
+    }
 
     private let stepCount = 6
 
@@ -366,10 +376,6 @@ struct OnboardingView: View {
     }
 
     private func loadProfileIfNeeded() {
-        guard !loadedProfile else { return }
-        loadedProfile = true
-        guard let profile = profiles.first else { return }
-        selectedAreas = Set(profile.selectedAreas)
-        energyPeak = profile.energyPeak
+        viewModel.load(profile: profiles.first)
     }
 }

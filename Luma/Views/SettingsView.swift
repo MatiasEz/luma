@@ -19,10 +19,24 @@ struct SettingsView: View {
     @Query(sort: \AcademicSubject.updatedAt) private var subjects: [AcademicSubject]
     @Query(sort: \SubjectGradeItem.updatedAt) private var subjectGradeItems: [SubjectGradeItem]
 
-    @State private var backupDocument = LumaBackupDocument()
-    @State private var isExporting = false
-    @State private var isImporting = false
-    @State private var backupMessage = ""
+    @State private var viewModel = SettingsViewModel()
+
+    private var backupDocument: LumaBackupDocument {
+        get { viewModel.backupDocument }
+        nonmutating set { viewModel.backupDocument = newValue }
+    }
+    private var isExporting: Bool {
+        get { viewModel.isExporting }
+        nonmutating set { viewModel.isExporting = newValue }
+    }
+    private var isImporting: Bool {
+        get { viewModel.isImporting }
+        nonmutating set { viewModel.isImporting = newValue }
+    }
+    private var backupMessage: String {
+        get { viewModel.backupMessage }
+        nonmutating set { viewModel.backupMessage = newValue }
+    }
 
     var body: some View {
         TabView {
@@ -40,14 +54,20 @@ struct SettingsView: View {
         .padding(22)
         .background(LumaBackground())
         .fileExporter(
-            isPresented: $isExporting,
+            isPresented: Binding(
+                get: { viewModel.isExporting },
+                set: { viewModel.isExporting = $0 }
+            ),
             document: backupDocument,
             contentType: .json,
             defaultFilename: "Luma-respaldo"
         ) { result in
             backupMessage = result.isSuccess ? "Respaldo guardado." : "No se pudo guardar el respaldo."
         }
-        .fileImporter(isPresented: $isImporting, allowedContentTypes: [.json]) { result in
+        .fileImporter(isPresented: Binding(
+            get: { viewModel.isImporting },
+            set: { viewModel.isImporting = $0 }
+        ), allowedContentTypes: [.json]) { result in
             importBackup(result)
         }
     }

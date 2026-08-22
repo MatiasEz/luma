@@ -8,28 +8,39 @@ struct SubjectsView: View {
     @Query(sort: \SubjectGradeItem.createdAt) private var gradeItems: [SubjectGradeItem]
     @Query(sort: \LumaTask.createdAt, order: .reverse) private var tasks: [LumaTask]
 
-    @State private var editorPresented = false
-    @State private var editingSubject: AcademicSubject?
-    @State private var subjectToArchive: AcademicSubject?
-    @State private var gradeDetailSubject: AcademicSubject?
-    @State private var quickGradeEntryPresented = false
+    @State private var viewModel = SubjectsViewModel()
+
+    private var editorPresented: Bool {
+        get { viewModel.editorPresented }
+        nonmutating set { viewModel.editorPresented = newValue }
+    }
+    private var editingSubject: AcademicSubject? {
+        get { viewModel.editingSubject }
+        nonmutating set { viewModel.editingSubject = newValue }
+    }
+    private var subjectToArchive: AcademicSubject? {
+        get { viewModel.subjectToArchive }
+        nonmutating set { viewModel.subjectToArchive = newValue }
+    }
+    private var gradeDetailSubject: AcademicSubject? {
+        get { viewModel.gradeDetailSubject }
+        nonmutating set { viewModel.gradeDetailSubject = newValue }
+    }
+    private var quickGradeEntryPresented: Bool {
+        get { viewModel.quickGradeEntryPresented }
+        nonmutating set { viewModel.quickGradeEntryPresented = newValue }
+    }
 
     private var activeSubjects: [AcademicSubject] {
-        subjects.filter { !$0.isArchived }
+        viewModel.activeSubjects(from: subjects)
     }
 
     private var activeItems: [SubjectGradeItem] {
-        gradeItems.filter { !$0.isArchived }
+        viewModel.activeItems(from: gradeItems)
     }
 
     private var gradeEntryTasks: [LumaTask] {
-        let subjectIDs = Set(activeSubjects.map(\.id))
-        let itemIDs = Set(activeItems.map(\.id))
-        return tasks.filter {
-            $0.academicSubjectID.map(subjectIDs.contains) == true
-                && $0.subjectGradeItemID.map(itemIDs.contains) == true
-                && ($0.isCompleted || $0.grade != nil)
-        }
+        viewModel.gradeEntryTasks(subjects: subjects, items: gradeItems, tasks: tasks)
     }
 
     private var academicInsights: [AcademicSubjectInsight] {
@@ -83,20 +94,29 @@ struct SubjectsView: View {
             .frame(maxWidth: 1040, alignment: .leading)
         }
         .navigationTitle("Materias")
-        .sheet(isPresented: $editorPresented, onDismiss: { editingSubject = nil }) {
+        .sheet(isPresented: Binding(
+            get: { viewModel.editorPresented },
+            set: { viewModel.editorPresented = $0 }
+        ), onDismiss: { editingSubject = nil }) {
             SubjectEditorView(
                 subject: editingSubject,
                 existingItems: editingSubject.map { items(for: $0) } ?? []
             )
         }
-        .sheet(item: $gradeDetailSubject) { subject in
+        .sheet(item: Binding(
+            get: { viewModel.gradeDetailSubject },
+            set: { viewModel.gradeDetailSubject = $0 }
+        )) { subject in
             SubjectGradeDetailView(
                 subject: subject,
                 items: items(for: subject),
                 tasks: tasks.filter { $0.academicSubjectID == subject.id }
             )
         }
-        .sheet(isPresented: $quickGradeEntryPresented) {
+        .sheet(isPresented: Binding(
+            get: { viewModel.quickGradeEntryPresented },
+            set: { viewModel.quickGradeEntryPresented = $0 }
+        )) {
             QuickGradeEntryView(
                 subjects: activeSubjects,
                 items: activeItems,
@@ -534,15 +554,23 @@ private struct SubjectGradeDetailView: View {
     let items: [SubjectGradeItem]
     let tasks: [LumaTask]
 
-    @State private var simulatorPresented = false
-    @State private var quickGradeEntryPresented = false
+    @State private var viewModel = SubjectGradeDetailViewModel()
+
+    private var simulatorPresented: Bool {
+        get { viewModel.simulatorPresented }
+        nonmutating set { viewModel.simulatorPresented = newValue }
+    }
+    private var quickGradeEntryPresented: Bool {
+        get { viewModel.quickGradeEntryPresented }
+        nonmutating set { viewModel.quickGradeEntryPresented = newValue }
+    }
 
     private var summary: SubjectGradeSummary {
-        SubjectGradeCalculator.makeSummary(items: items, tasks: tasks)
+        viewModel.summary(items: items, tasks: tasks)
     }
 
     private var gradeEntryTasks: [LumaTask] {
-        tasks.filter { $0.subjectGradeItemID != nil && ($0.isCompleted || $0.grade != nil) }
+        viewModel.gradeEntryTasks(from: tasks)
     }
 
     var body: some View {
@@ -619,10 +647,16 @@ private struct SubjectGradeDetailView: View {
         }
         .background(LumaBackground())
         .frame(width: 700, height: 650)
-        .sheet(isPresented: $simulatorPresented) {
+        .sheet(isPresented: Binding(
+            get: { viewModel.simulatorPresented },
+            set: { viewModel.simulatorPresented = $0 }
+        )) {
             GradeSimulatorView(subject: subject, items: items, tasks: tasks)
         }
-        .sheet(isPresented: $quickGradeEntryPresented) {
+        .sheet(isPresented: Binding(
+            get: { viewModel.quickGradeEntryPresented },
+            set: { viewModel.quickGradeEntryPresented = $0 }
+        )) {
             QuickGradeEntryView(subjects: [subject], items: items, tasks: gradeEntryTasks)
         }
     }
@@ -879,33 +913,25 @@ private struct QuickGradeEntryView: View {
     let items: [SubjectGradeItem]
     let tasks: [LumaTask]
 
-    @State private var selectedSubjectID: UUID?
-    @State private var gradeTexts: [UUID: String]
+    @State private var viewModel: QuickGradeEntryViewModel
 
     init(subjects: [AcademicSubject], items: [SubjectGradeItem], tasks: [LumaTask]) {
         self.subjects = subjects
         self.items = items
         self.tasks = tasks
-        _selectedSubjectID = State(initialValue: subjects.count == 1 ? subjects.first?.id : nil)
-        _gradeTexts = State(initialValue: Dictionary(uniqueKeysWithValues: tasks.map { task in
-            let text = task.grade?.formatted(.number.precision(.fractionLength(0 ... 2))) ?? ""
-            return (task.id, text)
-        }))
+        _viewModel = State(initialValue: QuickGradeEntryViewModel(subjects: subjects, tasks: tasks))
     }
 
     private var filteredSubjects: [AcademicSubject] {
-        subjects.filter { subject in
-            (selectedSubjectID == nil || selectedSubjectID == subject.id)
-                && tasks.contains { $0.academicSubjectID == subject.id }
-        }
+        viewModel.filteredSubjects(subjects, tasks: tasks)
     }
 
     private var changedTasks: [LumaTask] {
-        tasks.filter { gradeChanged(for: $0) }
+        viewModel.changedTasks(from: tasks)
     }
 
     private var allInputsAreValid: Bool {
-        tasks.allSatisfy { inputIsValid(for: $0) }
+        viewModel.allInputsAreValid(tasks: tasks)
     }
 
     private var awaitingCount: Int {
@@ -938,7 +964,10 @@ private struct QuickGradeEntryView: View {
             VStack(alignment: .leading, spacing: 14) {
                 HStack(spacing: 12) {
                     if subjects.count > 1 {
-                        Picker("Materia", selection: $selectedSubjectID) {
+                        Picker("Materia", selection: Binding(
+                            get: { viewModel.selectedSubjectID },
+                            set: { viewModel.selectedSubjectID = $0 }
+                        )) {
                             Text("Todas las materias").tag(nil as UUID?)
                             ForEach(subjects) { subject in
                                 Text(subject.name).tag(subject.id as UUID?)
@@ -1085,41 +1114,26 @@ private struct QuickGradeEntryView: View {
 
     private func gradeBinding(for taskID: UUID) -> Binding<String> {
         Binding(
-            get: { gradeTexts[taskID] ?? "" },
-            set: { gradeTexts[taskID] = $0 }
+            get: { viewModel.gradeTexts[taskID] ?? "" },
+            set: { viewModel.gradeTexts[taskID] = $0 }
         )
     }
 
     private func parsedGrade(for task: LumaTask) -> Double? {
-        let text = (gradeTexts[task.id] ?? "")
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-            .replacingOccurrences(of: ",", with: ".")
-        guard !text.isEmpty else { return nil }
-        return Double(text)
+        viewModel.parsedGrade(for: task)
     }
 
     private func inputIsValid(for task: LumaTask) -> Bool {
-        let text = (gradeTexts[task.id] ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
-        if text.isEmpty { return true }
-        guard let grade = parsedGrade(for: task) else { return false }
-        return (0 ... 10).contains(grade)
+        viewModel.inputIsValid(for: task)
     }
 
     private func gradeChanged(for task: LumaTask) -> Bool {
-        guard inputIsValid(for: task) else { return false }
-        switch (task.grade, parsedGrade(for: task)) {
-        case (nil, nil): return false
-        case let (old?, new?): return abs(old - new) > 0.0001
-        default: return true
-        }
+        viewModel.gradeChanged(for: task)
     }
 
     private func save() {
         guard allInputsAreValid else { return }
-        for task in changedTasks {
-            task.grade = parsedGrade(for: task)
-            task.touch()
-        }
+        viewModel.applyGrades(to: tasks)
         try? modelContext.save()
         appState.refreshPlan()
         dismiss()
@@ -1133,33 +1147,31 @@ private struct GradeSimulatorView: View {
     let items: [SubjectGradeItem]
     let tasks: [LumaTask]
 
-    @State private var simulatedGrades: [UUID: Double] = [:]
+    @State private var viewModel = GradeSimulatorViewModel()
+
+    private var simulatedGrades: [UUID: Double] {
+        get { viewModel.simulatedGrades }
+        nonmutating set { viewModel.simulatedGrades = newValue }
+    }
 
     private var pendingTasks: [LumaTask] {
-        tasks.filter {
-            $0.academicEvaluationStatus == .upcomingEvaluation
-                || $0.academicEvaluationStatus == .awaitingGrade
-        }
+        viewModel.pendingTasks(from: tasks)
     }
 
     private var actualSummary: SubjectGradeSummary {
-        SubjectGradeCalculator.makeSummary(items: items, tasks: tasks)
+        viewModel.summary(items: items, tasks: tasks, includeSimulation: false)
     }
 
     private var simulatedSummary: SubjectGradeSummary {
-        SubjectGradeCalculator.makeSummary(
-            items: items,
-            tasks: tasks,
-            simulatedGrades: simulatedGrades
-        )
+        viewModel.summary(items: items, tasks: tasks, includeSimulation: true)
     }
 
     private var allSimulated: Bool {
-        !pendingTasks.isEmpty && pendingTasks.allSatisfy { simulatedGrades[$0.id] != nil }
+        viewModel.allSimulated(tasks: tasks)
     }
 
     private var valuesAreValid: Bool {
-        simulatedGrades.values.allSatisfy { (0 ... 10).contains($0) }
+        viewModel.valuesAreValid
     }
 
     var body: some View {
@@ -1206,7 +1218,7 @@ private struct GradeSimulatorView: View {
                                (0 ... 10).contains(required)
                             {
                                 Button("Usar nota necesaria") {
-                                    for task in pendingTasks { simulatedGrades[task.id] = required }
+                                    viewModel.useRequiredGrade(required, tasks: tasks)
                                 }
                                 .buttonStyle(SoftButtonStyle(color: LumaPalette.indigo))
                             }
@@ -1363,60 +1375,40 @@ private struct SubjectEditorView: View {
     let subject: AcademicSubject?
     let existingItems: [SubjectGradeItem]
 
-    @State private var name: String
-    @State private var targetGrade: Double?
-    @State private var drafts: [GradeItemDraft]
+    @State private var viewModel: SubjectEditorViewModel
 
     init(subject: AcademicSubject?, existingItems: [SubjectGradeItem]) {
         self.subject = subject
         self.existingItems = existingItems
-        _name = State(initialValue: subject?.name ?? "")
-        _targetGrade = State(initialValue: subject?.targetGrade)
-        _drafts = State(initialValue: existingItems.isEmpty && subject == nil
-            ? [GradeItemDraft()]
-            : existingItems.map(GradeItemDraft.init))
+        _viewModel = State(initialValue: SubjectEditorViewModel(
+            subject: subject,
+            existingItems: existingItems
+        ))
     }
 
     private var parsedItems: [(draft: GradeItemDraft, weight: Double)]? {
-        var result: [(GradeItemDraft, Double)] = []
-        for draft in drafts {
-            let normalized = draft.weightText.replacingOccurrences(of: ",", with: ".")
-            guard !draft.trimmedTitle.isEmpty,
-                  let weight = Double(normalized),
-                  weight > 0,
-                  weight <= 100
-            else { return nil }
-            result.append((draft, weight))
-        }
-        return result
+        viewModel.parsedItems
     }
 
     private var total: Double {
-        parsedItems?.reduce(0) { $0 + $1.weight } ?? 0
+        viewModel.total
     }
 
     private var hasDuplicateName: Bool {
-        allSubjects.contains {
-            !$0.isArchived
-                && $0.id != subject?.id
-                && $0.name.localizedCaseInsensitiveCompare(trimmedName) == .orderedSame
-        }
+        viewModel.hasDuplicateName(subject: subject, allSubjects: allSubjects)
     }
 
     private var canSave: Bool {
-        !trimmedName.isEmpty
-            && !hasDuplicateName
-            && !drafts.isEmpty
-            && parsedItems != nil
-            && total <= 100
-            && targetGrade.map { (0 ... 10).contains($0) } != false
+        viewModel.canSave(subject: subject, allSubjects: allSubjects)
     }
 
     private var trimmedName: String {
-        name.trimmingCharacters(in: .whitespacesAndNewlines)
+        viewModel.trimmedName
     }
 
     var body: some View {
+        @Bindable var viewModel = viewModel
+
         VStack(alignment: .leading, spacing: 20) {
             HStack(alignment: .top) {
                 VStack(alignment: .leading, spacing: 5) {
@@ -1436,7 +1428,7 @@ private struct SubjectEditorView: View {
                 Text("Nombre")
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(LumaPalette.secondaryInk)
-                TextField("Ej. Economía", text: $name)
+                TextField("Ej. Economía", text: $viewModel.name)
                     .textFieldStyle(.roundedBorder)
                     .font(.title3.weight(.medium))
                 if hasDuplicateName {
@@ -1463,7 +1455,7 @@ private struct SubjectEditorView: View {
                 Spacer()
                 TextField(
                     "Sin objetivo",
-                    value: $targetGrade,
+                    value: $viewModel.targetGrade,
                     format: .number.precision(.fractionLength(0 ... 2))
                 )
                 .textFieldStyle(.roundedBorder)
@@ -1481,7 +1473,7 @@ private struct SubjectEditorView: View {
                         .foregroundStyle(LumaPalette.ink)
                     Spacer()
                     Button {
-                        drafts.append(GradeItemDraft())
+                        viewModel.drafts.append(GradeItemDraft())
                     } label: {
                         Label("Agregar ítem", systemImage: "plus")
                     }
@@ -1490,7 +1482,7 @@ private struct SubjectEditorView: View {
 
                 ScrollView {
                     VStack(spacing: 9) {
-                        ForEach($drafts) { $draft in
+                        ForEach($viewModel.drafts) { $draft in
                             HStack(spacing: 9) {
                                 TextField("Ej. Exámenes", text: $draft.title)
                                     .textFieldStyle(.roundedBorder)
@@ -1501,7 +1493,7 @@ private struct SubjectEditorView: View {
                                     .font(.subheadline.weight(.semibold))
                                     .foregroundStyle(LumaPalette.secondaryInk)
                                 Button {
-                                    drafts.removeAll { $0.id == draft.id }
+                                    viewModel.drafts.removeAll { $0.id == draft.id }
                                 } label: {
                                     Image(systemName: "minus.circle.fill")
                                         .foregroundStyle(LumaPalette.terracotta)
@@ -1561,13 +1553,13 @@ private struct SubjectEditorView: View {
 
         if let subject {
             subject.name = trimmedName
-            subject.targetGrade = targetGrade
+            subject.targetGrade = viewModel.targetGrade
             subject.updatedAt = now
             savedSubject = subject
         } else {
             let newSubject = AcademicSubject(
                 name: trimmedName,
-                targetGrade: targetGrade,
+                targetGrade: viewModel.targetGrade,
                 createdAt: now,
                 updatedAt: now
             )
@@ -1609,7 +1601,7 @@ private struct SubjectEditorView: View {
     }
 }
 
-private struct GradeItemDraft: Identifiable {
+struct GradeItemDraft: Identifiable {
     let id: UUID
     var title: String
     var weightText: String

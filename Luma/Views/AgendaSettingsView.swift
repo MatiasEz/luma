@@ -11,8 +11,17 @@ struct AgendaSettingsView: View {
     @Query(sort: \AcademicSubject.name) private var subjects: [AcademicSubject]
     @Query(sort: \SubjectGradeItem.createdAt) private var gradeItems: [SubjectGradeItem]
 
-    @State private var availabilityWindows: [AvailabilityWindow] = []
-    @State private var energyPreference = EnergyPreference.normal
+    @State private var viewModel = AgendaSettingsViewModel()
+
+    private var availabilityWindows: [AvailabilityWindow] {
+        get { viewModel.availabilityWindows }
+        nonmutating set { viewModel.availabilityWindows = newValue }
+    }
+
+    private var energyPreference: EnergyPreference {
+        get { viewModel.energyPreference }
+        nonmutating set { viewModel.energyPreference = newValue }
+    }
 
     private let learningEngine = BehaviorLearningEngine()
     private let scheduler = DailyScheduler()
@@ -31,7 +40,7 @@ struct AgendaSettingsView: View {
     }
 
     private var totalAvailableMinutes: Int {
-        min(480, availabilityWindows.reduce(0) { $0 + $1.durationMinutes })
+        min(480, viewModel.totalAvailableMinutes)
     }
 
     var body: some View {
@@ -94,7 +103,10 @@ struct AgendaSettingsView: View {
             if !availabilityWindows.isEmpty {
                 Divider()
                 VStack(spacing: 10) {
-                    ForEach($availabilityWindows) { $window in
+                    ForEach(Binding(
+                        get: { viewModel.availabilityWindows },
+                        set: { viewModel.availabilityWindows = $0 }
+                    )) { $window in
                         availabilityRow(window: $window)
                     }
                 }
@@ -168,7 +180,10 @@ struct AgendaSettingsView: View {
                 .font(.headline)
                 .foregroundStyle(LumaPalette.ink)
 
-            Picker("Energía", selection: $energyPreference) {
+            Picker("Energía", selection: Binding(
+                get: { viewModel.energyPreference },
+                set: { viewModel.energyPreference = $0 }
+            )) {
                 ForEach(EnergyPreference.allCases) { preference in
                     Text(preference.title).tag(preference)
                 }
@@ -195,24 +210,14 @@ struct AgendaSettingsView: View {
     }
 
     private func loadCurrentAgenda() {
-        energyPreference = appState.energyPreference
-        guard let agenda = appState.dailyAgenda,
-              Calendar.current.isDateInToday(agenda.day)
-        else {
-            availabilityWindows = []
-            return
+        let agenda = appState.dailyAgenda.flatMap {
+            Calendar.current.isDateInToday($0.day) ? $0 : nil
         }
-        availabilityWindows = agenda.availabilityWindows
+        viewModel.load(from: agenda, fallbackEnergy: appState.energyPreference)
     }
 
     private func setQuickAvailability(_ minutes: Int) {
-        let initialStart = scheduler.defaultStartMinute()
-        let end = min(23 * 60 + 45, initialStart + minutes)
-        let start = max(0, min(initialStart, end - 15))
-        availabilityWindows = [AvailabilityWindow(
-            startMinuteOfDay: start,
-            endMinuteOfDay: end
-        )]
+        viewModel.setQuickAvailability(minutes, defaultStart: scheduler.defaultStartMinute())
     }
 
     private func addAvailabilityWindow() {

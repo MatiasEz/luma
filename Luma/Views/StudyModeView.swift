@@ -10,21 +10,59 @@ struct StudyModeView: View {
     @Query(sort: \StudyGuide.importedAt, order: .reverse) private var guides: [StudyGuide]
     @Query(sort: \LumaTask.createdAt) private var tasks: [LumaTask]
 
-    @State private var selectedGuideID: UUID?
-    @State private var examDate = Calendar.current.date(byAdding: .day, value: 14, to: .now) ?? .now
-    @State private var isFileImporterPresented = false
-    @State private var isProcessing = false
-    @State private var processingProgress = 0.0
-    @State private var processingStage = ""
-    @State private var message = ""
-    @State private var selectedTab = StudyDetailTab.plan
-    @State private var cardIndex = 0
-    @State private var isCardRevealed = false
-    @State private var questionIndex = 0
-    @State private var selectedAnswer: Int?
+    @State private var viewModel = StudyModeViewModel()
+
+    private var selectedGuideID: UUID? {
+        get { viewModel.selectedGuideID }
+        nonmutating set { viewModel.selectedGuideID = newValue }
+    }
+    private var examDate: Date {
+        get { viewModel.examDate }
+        nonmutating set { viewModel.examDate = newValue }
+    }
+    private var isFileImporterPresented: Bool {
+        get { viewModel.isFileImporterPresented }
+        nonmutating set { viewModel.isFileImporterPresented = newValue }
+    }
+    private var isProcessing: Bool {
+        get { viewModel.isProcessing }
+        nonmutating set { viewModel.isProcessing = newValue }
+    }
+    private var processingProgress: Double {
+        get { viewModel.processingProgress }
+        nonmutating set { viewModel.processingProgress = newValue }
+    }
+    private var processingStage: String {
+        get { viewModel.processingStage }
+        nonmutating set { viewModel.processingStage = newValue }
+    }
+    private var message: String {
+        get { viewModel.message }
+        nonmutating set { viewModel.message = newValue }
+    }
+    private var selectedTab: StudyDetailTab {
+        get { viewModel.selectedTab }
+        nonmutating set { viewModel.selectedTab = newValue }
+    }
+    private var cardIndex: Int {
+        get { viewModel.cardIndex }
+        nonmutating set { viewModel.cardIndex = newValue }
+    }
+    private var isCardRevealed: Bool {
+        get { viewModel.isCardRevealed }
+        nonmutating set { viewModel.isCardRevealed = newValue }
+    }
+    private var questionIndex: Int {
+        get { viewModel.questionIndex }
+        nonmutating set { viewModel.questionIndex = newValue }
+    }
+    private var selectedAnswer: Int? {
+        get { viewModel.selectedAnswer }
+        nonmutating set { viewModel.selectedAnswer = newValue }
+    }
 
     private var selectedGuide: StudyGuide? {
-        guides.first { $0.id == selectedGuideID } ?? guides.first
+        viewModel.selectedGuide(from: guides)
     }
 
     var body: some View {
@@ -60,7 +98,10 @@ struct StudyModeView: View {
         .background(LumaBackground())
         .navigationTitle("Modo Estudio")
         .fileImporter(
-            isPresented: $isFileImporterPresented,
+            isPresented: Binding(
+                get: { viewModel.isFileImporterPresented },
+                set: { viewModel.isFileImporterPresented = $0 }
+            ),
             allowedContentTypes: [.pdf],
             allowsMultipleSelection: false
         ) { result in
@@ -100,7 +141,10 @@ struct StudyModeView: View {
                     .foregroundStyle(LumaPalette.secondaryInk)
                 DatePicker(
                     "Fecha del examen",
-                    selection: $examDate,
+                    selection: Binding(
+                        get: { viewModel.examDate },
+                        set: { viewModel.examDate = $0 }
+                    ),
                     in: Calendar.current.startOfDay(for: .now)...,
                     displayedComponents: .date
                 )
@@ -304,7 +348,10 @@ struct StudyModeView: View {
             VStack(alignment: .leading, spacing: 18) {
                 guideSummary(guide)
 
-                Picker("Contenido", selection: $selectedTab) {
+                Picker("Contenido", selection: Binding(
+                    get: { viewModel.selectedTab },
+                    set: { viewModel.selectedTab = $0 }
+                )) {
                     ForEach(StudyDetailTab.allCases) { tab in
                         Label(tab.title, systemImage: tab.symbol).tag(tab)
                     }
@@ -813,11 +860,7 @@ struct StudyModeView: View {
     }
 
     private func resetPracticeState() {
-        selectedTab = .plan
-        cardIndex = 0
-        isCardRevealed = false
-        questionIndex = 0
-        selectedAnswer = nil
+        viewModel.resetPracticeState()
     }
 
     private func safeCardIndex(for cards: [StudyFlashcard]) -> Int {
@@ -844,7 +887,7 @@ struct StudyModeView: View {
     }
 }
 
-private enum StudyDetailTab: String, CaseIterable, Identifiable {
+enum StudyDetailTab: String, CaseIterable, Identifiable {
     case plan
     case cards
     case practice

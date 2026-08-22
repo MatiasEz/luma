@@ -15,15 +15,14 @@ struct DashboardView: View {
     @Query(sort: \AcademicSubject.name) private var subjects: [AcademicSubject]
     @Query(sort: \SubjectGradeItem.createdAt) private var gradeItems: [SubjectGradeItem]
 
-    @State private var agendaSettingsPresented = false
-    @State private var calendarFeedback = ""
+    @State private var viewModel = DashboardViewModel()
 
     private let learningEngine = BehaviorLearningEngine()
     private let scheduler = DailyScheduler()
     private let dayChangeTimer = Timer.publish(every: 60, on: .main, in: .common).autoconnect()
 
     private var recommendations: [PlanRecommendation] {
-        appState.dailyRecommendations(from: tasks, planner: planner)
+        viewModel.recommendations(tasks: tasks, planner: planner, appState: appState)
     }
 
     private var rhythmProfile: UserRhythmProfile {
@@ -167,7 +166,10 @@ struct DashboardView: View {
             if newPhase == .active { preparePlan() }
         }
         .onReceive(dayChangeTimer) { now in preparePlan(now: now) }
-        .sheet(isPresented: $agendaSettingsPresented) {
+        .sheet(isPresented: Binding(
+            get: { viewModel.agendaSettingsPresented },
+            set: { viewModel.agendaSettingsPresented = $0 }
+        )) {
             AgendaSettingsView()
                 .frame(width: 700, height: 680)
         }
@@ -409,10 +411,10 @@ struct DashboardView: View {
                 }
             }
 
-            if !calendarFeedback.isEmpty {
-                Text(calendarFeedback)
+            if !viewModel.calendarFeedback.isEmpty {
+                Text(viewModel.calendarFeedback)
                     .font(.caption)
-                    .foregroundStyle(calendarFeedback.hasPrefix("Listo") ? LumaPalette.sage : LumaPalette.terracotta)
+                    .foregroundStyle(viewModel.calendarFeedback.hasPrefix("Listo") ? LumaPalette.sage : LumaPalette.terracotta)
             }
         }
     }
@@ -474,7 +476,7 @@ struct DashboardView: View {
     }
 
     private var agendaSettingsButton: some View {
-        Button { agendaSettingsPresented = true } label: {
+        Button { viewModel.agendaSettingsPresented = true } label: {
             Label("Ajustar disponibilidad", systemImage: "slider.horizontal.3")
         }
         .buttonStyle(SoftButtonStyle(color: LumaPalette.indigo))
@@ -782,9 +784,9 @@ struct DashboardView: View {
     private func syncCalendar() {
         do {
             try calendarService.syncAgenda(appState.dailyAgenda, tasks: tasks)
-            calendarFeedback = "Listo. El plan de hoy quedó en Calendario."
+            viewModel.calendarFeedback = "Listo. El plan de hoy quedó en Calendario."
         } catch {
-            calendarFeedback = "No pude enviar el plan: \(error.localizedDescription)"
+            viewModel.calendarFeedback = "No pude enviar el plan: \(error.localizedDescription)"
         }
     }
 
@@ -860,7 +862,12 @@ private struct DraggableAgendaRow: View {
     let onStart: () -> Void
     let onMove: (Int) -> Void
 
-    @State private var dragOffset: CGFloat = 0
+    @State private var viewModel = DraggableAgendaRowViewModel()
+
+    private var dragOffset: CGFloat {
+        get { viewModel.dragOffset }
+        nonmutating set { viewModel.dragOffset = newValue }
+    }
 
     var body: some View {
         HStack(spacing: 14) {
@@ -915,10 +922,11 @@ private struct DraggableAgendaRow: View {
             DragGesture(minimumDistance: 8)
                 .onChanged { dragOffset = $0.translation.height }
                 .onEnded { value in
-                    let stepCount = Int((value.translation.height / 26).rounded())
-                    dragOffset = 0
-                    guard stepCount != 0 else { return }
-                    onMove(item.block.startMinuteOfDay + stepCount * 15)
+                    guard let destination = viewModel.finishDrag(
+                        translation: value.translation.height,
+                        currentStart: item.block.startMinuteOfDay
+                    ) else { return }
+                    onMove(destination)
                 }
         )
         .contextMenu {
@@ -938,7 +946,12 @@ private struct PriorityCard: View {
     @Environment(\.modelContext) private var modelContext
     let index: Int
     let recommendation: PlanRecommendation
-    @State private var editingTask = false
+    @State private var viewModel = PriorityCardViewModel()
+
+    private var editingTask: Bool {
+        get { viewModel.editingTask }
+        nonmutating set { viewModel.editingTask = newValue }
+    }
 
     var body: some View {
         ViewThatFits(in: .horizontal) {
@@ -957,7 +970,10 @@ private struct PriorityCard: View {
             }
         }
         .lumaCard(padding: 15)
-        .sheet(isPresented: $editingTask) {
+        .sheet(isPresented: Binding(
+            get: { viewModel.editingTask },
+            set: { viewModel.editingTask = $0 }
+        )) {
             TaskEditorView(task: recommendation.task)
                 .frame(width: 720, height: 690)
         }

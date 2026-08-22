@@ -9,30 +9,18 @@ struct InboxView: View {
     @Query(sort: \LumaTask.createdAt, order: .reverse) private var tasks: [LumaTask]
     @Query(sort: \AcademicSubject.name) private var subjects: [AcademicSubject]
     @Query(sort: \SubjectGradeItem.createdAt) private var gradeItems: [SubjectGradeItem]
-    @State private var selectedArea: LifeArea?
-    @State private var selectedSmartFilter: SmartTaskFilter = .all
-    @State private var showCompleted = false
-    @State private var editingTask: LumaTask?
-    @State private var selectedTask: LumaTask?
+    @State private var viewModel = InboxViewModel()
 
     private var filteredTasks: [LumaTask] {
-        tasks.filter { task in
-            (selectedArea == nil || task.area == selectedArea)
-                && selectedSmartFilter.matches(task, in: tasks)
-                && (showCompleted || !task.isCompleted || task.academicEvaluationStatus == .awaitingGrade)
-        }
+        viewModel.filteredTasks(from: tasks)
     }
 
     private var awaitingGradeTasks: [LumaTask] {
-        filteredTasks.filter { $0.academicEvaluationStatus == .awaitingGrade }
+        viewModel.awaitingGradeTasks(from: tasks)
     }
 
     private var regularTasks: [LumaTask] {
-        filteredTasks.filter { $0.academicEvaluationStatus != .awaitingGrade }
-    }
-
-    private var awaitingGradeCount: Int {
-        tasks.filter { $0.academicEvaluationStatus == .awaitingGrade }.count
+        viewModel.regularTasks(from: tasks)
     }
 
     var body: some View {
@@ -52,7 +40,7 @@ struct InboxView: View {
                     }
 
                     filters
-                    if selectedSmartFilter == .all || selectedSmartFilter == .evaluations {
+                    if viewModel.selectedSmartFilter == .all || viewModel.selectedSmartFilter == .evaluations {
                         awaitingGradesSection
                         Divider().opacity(0.45)
                     }
@@ -62,7 +50,7 @@ struct InboxView: View {
                 .frame(maxWidth: 980, alignment: .leading)
             }
 
-            if let selectedTask {
+            if let selectedTask = viewModel.selectedTask {
                 Divider().opacity(0.55)
                 TaskDetailPanel(
                     task: selectedTask,
@@ -71,8 +59,8 @@ struct InboxView: View {
                     blockers: blockerNames(for: selectedTask),
                     unlockedTaskName: unlockedTaskName(for: selectedTask),
                     isCalendarSynced: calendarService.isTaskSynced(selectedTask.id),
-                    onClose: { self.selectedTask = nil },
-                    onEdit: { editingTask = selectedTask },
+                    onClose: { viewModel.selectedTask = nil },
+                    onEdit: { viewModel.editingTask = selectedTask },
                     onStart: { appState.startFocus(for: selectedTask.id) },
                     onToggleCompletion: { toggleCompletion(selectedTask) }
                 )
@@ -80,13 +68,13 @@ struct InboxView: View {
                 .transition(.move(edge: .trailing).combined(with: .opacity))
             }
         }
-        .animation(.easeInOut(duration: 0.2), value: selectedTask?.id)
+        .animation(.easeInOut(duration: 0.2), value: viewModel.selectedTask?.id)
         .navigationTitle("Inbox")
         .sheet(isPresented: Binding(
-            get: { editingTask != nil },
-            set: { if !$0 { editingTask = nil } }
+            get: { viewModel.editingTask != nil },
+            set: { if !$0 { viewModel.editingTask = nil } }
         )) {
-            if let editingTask {
+            if let editingTask = viewModel.editingTask {
                 TaskEditorView(task: editingTask)
                     .frame(width: 720, height: 690)
             }
@@ -158,8 +146,8 @@ struct InboxView: View {
             unlockedTaskName: unlockedTaskName(for: task),
             onToggleCompletion: { toggleCompletion(task) },
             onSaveGrade: { saveGrade($0, for: task) },
-            onOpenDetail: { selectedTask = task },
-            onEdit: { editingTask = task },
+            onOpenDetail: { viewModel.selectedTask = task },
+            onEdit: { viewModel.editingTask = task },
             onPostpone: { postpone(task) },
             onDelete: { delete(task) }
         )
@@ -171,13 +159,13 @@ struct InboxView: View {
                 HStack(spacing: 8) {
                     ForEach(SmartTaskFilter.allCases) { filter in
                         Button {
-                            selectedSmartFilter = filter
-                            if filter == .completed { showCompleted = true }
+                            viewModel.selectedSmartFilter = filter
+                            if filter == .completed { viewModel.showCompleted = true }
                         } label: {
                             Label(filter.title, systemImage: filter.symbol)
                         }
                         .buttonStyle(SoftButtonStyle(
-                            color: selectedSmartFilter == filter
+                            color: viewModel.selectedSmartFilter == filter
                                 ? filter.color
                                 : LumaPalette.secondaryInk
                         ))
@@ -188,21 +176,24 @@ struct InboxView: View {
 
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 8) {
-                    Button("Todas las áreas") { selectedArea = nil }
-                        .buttonStyle(SoftButtonStyle(color: selectedArea == nil ? LumaPalette.indigo : LumaPalette.secondaryInk))
+                    Button("Todas las áreas") { viewModel.selectedArea = nil }
+                        .buttonStyle(SoftButtonStyle(color: viewModel.selectedArea == nil ? LumaPalette.indigo : LumaPalette.secondaryInk))
 
                     ForEach(LifeArea.allCases) { area in
-                        Button(area.title) { selectedArea = area }
-                            .buttonStyle(SoftButtonStyle(color: selectedArea == area ? area.color : LumaPalette.secondaryInk))
+                        Button(area.title) { viewModel.selectedArea = area }
+                            .buttonStyle(SoftButtonStyle(color: viewModel.selectedArea == area ? area.color : LumaPalette.secondaryInk))
                     }
                 }
                 .padding(.vertical, 2)
             }
-            Toggle("Mostrar hechas", isOn: $showCompleted)
+            Toggle("Mostrar hechas", isOn: Binding(
+                get: { viewModel.showCompleted },
+                set: { viewModel.showCompleted = $0 }
+            ))
                 .toggleStyle(.switch)
                 .font(.caption)
                 .foregroundStyle(LumaPalette.secondaryInk)
-                .disabled(selectedSmartFilter == .completed)
+                .disabled(viewModel.selectedSmartFilter == .completed)
         }
     }
 
@@ -215,9 +206,7 @@ struct InboxView: View {
     }
 
     private var inboxCountText: String {
-        let open = tasks.filter { !$0.isCompleted }.count
-        guard awaitingGradeCount > 0 else { return "\(open) pendientes" }
-        return "\(open) pendientes · \(awaitingGradeCount) esperando nota"
+        viewModel.inboxCountText(tasks: tasks)
     }
 
     private var addButton: some View {
@@ -240,7 +229,7 @@ struct InboxView: View {
             source.unlocksAnotherTask = false
             source.touch()
         }
-        if selectedTask?.id == task.id { selectedTask = nil }
+        if viewModel.selectedTask?.id == task.id { viewModel.selectedTask = nil }
         modelContext.delete(task)
         try? modelContext.save()
         appState.refreshPlan()
@@ -256,7 +245,7 @@ struct InboxView: View {
             try? modelContext.save()
             try? calendarService.syncTask(restored)
             appState.refreshPlan()
-            selectedTask = restored
+            viewModel.selectedTask = restored
         }
     }
 
@@ -304,22 +293,19 @@ struct InboxView: View {
     }
 
     private func blockerNames(for task: LumaTask) -> [String] {
-        TaskDependencyResolver.blockers(for: task.id, in: tasks).map(\.title)
+        viewModel.blockerNames(for: task, tasks: tasks)
     }
 
     private func unlockedTaskName(for task: LumaTask) -> String? {
-        guard let targetID = task.unlocksTaskID else { return nil }
-        return tasks.first { $0.id == targetID }?.title
+        viewModel.unlockedTaskName(for: task, tasks: tasks)
     }
 
     private func subjectName(for task: LumaTask) -> String? {
-        guard let id = task.academicSubjectID else { return nil }
-        return subjects.first { $0.id == id }?.name
+        viewModel.subjectName(for: task, subjects: subjects)
     }
 
     private func categoryName(for task: LumaTask) -> String? {
-        guard let id = task.subjectGradeItemID else { return nil }
-        return gradeItems.first { $0.id == id }?.title
+        viewModel.categoryName(for: task, gradeItems: gradeItems)
     }
 }
 
@@ -336,8 +322,16 @@ private struct InboxTaskRow: View {
     let onPostpone: () -> Void
     let onDelete: () -> Void
 
-    @State private var isGradeEntryExpanded = false
-    @State private var grade: Double?
+    @State private var viewModel = InboxTaskRowViewModel()
+
+    private var isGradeEntryExpanded: Bool {
+        get { viewModel.isGradeEntryExpanded }
+        nonmutating set { viewModel.isGradeEntryExpanded = newValue }
+    }
+    private var grade: Double? {
+        get { viewModel.grade }
+        nonmutating set { viewModel.grade = newValue }
+    }
 
     private var isFinishedForDisplay: Bool {
         task.isCompleted && task.academicEvaluationStatus != .awaitingGrade
@@ -410,7 +404,10 @@ private struct InboxTaskRow: View {
         HStack(spacing: 8) {
             TextField(
                 "Ej. 8,5",
-                value: $grade,
+                value: Binding(
+                    get: { viewModel.grade },
+                    set: { viewModel.grade = $0 }
+                ),
                 format: .number.precision(.fractionLength(0 ... 2))
             )
             .textFieldStyle(.roundedBorder)
@@ -419,15 +416,12 @@ private struct InboxTaskRow: View {
                 .font(.subheadline.weight(.semibold))
                 .foregroundStyle(LumaPalette.secondaryInk)
             Button("Cancelar") {
-                grade = nil
-                isGradeEntryExpanded = false
+                viewModel.cancelGradeEntry()
             }
             .buttonStyle(.borderless)
             Button("Guardar") {
-                guard let grade, (0 ... 10).contains(grade) else { return }
+                guard let grade = viewModel.submittedGrade() else { return }
                 onSaveGrade(grade)
-                self.grade = nil
-                isGradeEntryExpanded = false
             }
             .buttonStyle(.borderedProminent)
             .tint(LumaPalette.indigo)
@@ -554,7 +548,7 @@ private struct InboxTaskRow: View {
     }
 }
 
-private enum SmartTaskFilter: String, CaseIterable, Identifiable {
+enum SmartTaskFilter: String, CaseIterable, Identifiable {
     case all
     case week
     case evaluations

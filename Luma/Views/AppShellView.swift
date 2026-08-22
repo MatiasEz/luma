@@ -15,6 +15,7 @@ struct AppShellView: View {
     @Query(sort: \LumaReplanRecord.createdAt) private var replanRecords: [LumaReplanRecord]
     @Query(sort: \AcademicSubject.updatedAt) private var subjects: [AcademicSubject]
     @Query(sort: \SubjectGradeItem.updatedAt) private var subjectGradeItems: [SubjectGradeItem]
+    @State private var viewModel = AppShellViewModel()
 
     private let learningEngine = BehaviorLearningEngine()
     private let scheduler = DailyScheduler()
@@ -253,52 +254,25 @@ struct AppShellView: View {
     }
 
     private var cloudFingerprint: String {
-        let taskPart = tasks.map {
-            [
-                $0.id.uuidString,
-                $0.title,
-                $0.statusRaw,
-                "\($0.updatedAt.timeIntervalSinceReferenceDate)",
-                "\($0.focusedMinutes)",
-                "\($0.postponementCount)",
-                $0.academicSubjectID?.uuidString ?? "sin-materia",
-                $0.subjectGradeItemID?.uuidString ?? "sin-categoria",
-                $0.grade.map { "\($0)" } ?? "sin-nota",
-                $0.unlocksTaskID?.uuidString ?? "sin-dependencia"
-            ].joined(separator: ":")
-        }.joined(separator: "|")
-        let sessionPart = focusSessions.map { "\($0.id):\($0.actualMinutes):\($0.completedTask)" }.joined(separator: "|")
-        let profilePart = profiles.map { "\($0.id):\($0.updatedAt.timeIntervalSinceReferenceDate)" }.joined(separator: "|")
-        let chatPart = chatMessages.map { "\($0.id):\($0.appliedAt?.timeIntervalSinceReferenceDate ?? 0)" }.joined(separator: "|")
-        let replanPart = replanRecords.map(\.id.uuidString).joined(separator: "|")
-        let subjectPart = subjects.map { subject in
-            let target = subject.targetGrade.map { String($0) } ?? "sin-objetivo"
-            return "\(subject.id):\(subject.name):\(target):\(subject.updatedAt.timeIntervalSinceReferenceDate):\(subject.isArchived)"
-        }.joined(separator: "|")
-        let gradeItemPart = subjectGradeItems.map { "\($0.id):\($0.title):\($0.weightPercent):\($0.updatedAt.timeIntervalSinceReferenceDate):\($0.isArchived)" }.joined(separator: "|")
-        return "\(taskPart)#\(sessionPart)#\(profilePart)#\(chatPart)#\(replanPart)#\(subjectPart)#\(gradeItemPart)"
+        viewModel.cloudFingerprint(
+            tasks: tasks,
+            sessions: focusSessions,
+            profiles: profiles,
+            messages: chatMessages,
+            replans: replanRecords,
+            subjects: subjects,
+            gradeItems: subjectGradeItems
+        )
     }
 
     private var attentionCount: Int {
-        let now = Date.now
-        let taskIssues = tasks.filter { task in
-            task.academicEvaluationStatus == .awaitingGrade
-                || (!task.isCompleted && (task.deadline.map { $0 < now } ?? false))
-                || (!task.isCompleted && TaskDependencyResolver.isBlocked(task, in: tasks))
-                || (!task.isCompleted && task.deadline == nil
-                    && now.timeIntervalSince(task.createdAt) >= 3 * 86_400)
-        }.count
-        let incompleteSubjects = subjects.filter { subject in
-            guard !subject.isArchived else { return false }
-            let total = subjectGradeItems
-                .filter { !$0.isArchived && $0.subjectID == subject.id }
-                .reduce(0) { $0 + $1.weightPercent }
-            return abs(total - 100) > 0.001
-        }.count
-        let syncIssue: Int
-        if case .failed = cloudSyncService.state { syncIssue = 1 } else { syncIssue = 0 }
-        let calendarIssue = calendarService.lastError == nil ? 0 : 1
-        return taskIssues + incompleteSubjects + syncIssue + calendarIssue
+        viewModel.attentionCount(
+            tasks: tasks,
+            subjects: subjects,
+            gradeItems: subjectGradeItems,
+            cloudState: cloudSyncService.state,
+            calendarError: calendarService.lastError
+        )
     }
 
     @ViewBuilder

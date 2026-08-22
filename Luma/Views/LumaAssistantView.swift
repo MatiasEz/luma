@@ -15,13 +15,33 @@ struct LumaAssistantView: View {
     @Query(sort: \LumaProfile.createdAt) private var profiles: [LumaProfile]
     @Query(sort: \LumaChatRecord.createdAt) private var messages: [LumaChatRecord]
 
-    @State private var draft = ""
-    @State private var isSending = false
-    @State private var errorMessage = ""
-    @State private var confirmingRecordID: UUID?
-    @State private var replanProposal: ReplanProposal?
-    @State private var replanRecordID: UUID?
+    @State private var viewModel = LumaAssistantViewModel()
     @FocusState private var composerFocused: Bool
+
+    private var draft: String {
+        get { viewModel.draft }
+        nonmutating set { viewModel.draft = newValue }
+    }
+    private var isSending: Bool {
+        get { viewModel.isSending }
+        nonmutating set { viewModel.isSending = newValue }
+    }
+    private var errorMessage: String {
+        get { viewModel.errorMessage }
+        nonmutating set { viewModel.errorMessage = newValue }
+    }
+    private var confirmingRecordID: UUID? {
+        get { viewModel.confirmingRecordID }
+        nonmutating set { viewModel.confirmingRecordID = newValue }
+    }
+    private var replanProposal: ReplanProposal? {
+        get { viewModel.replanProposal }
+        nonmutating set { viewModel.replanProposal = newValue }
+    }
+    private var replanRecordID: UUID? {
+        get { viewModel.replanRecordID }
+        nonmutating set { viewModel.replanRecordID = newValue }
+    }
 
     private let learningEngine = BehaviorLearningEngine()
     private let scheduler = DailyScheduler()
@@ -56,8 +76,7 @@ struct LumaAssistantView: View {
     }
 
     private var confirmationRecord: LumaChatRecord? {
-        guard let confirmingRecordID else { return nil }
-        return messages.first(where: { $0.id == confirmingRecordID })
+        viewModel.confirmationRecord(in: messages)
     }
 
     var body: some View {
@@ -90,7 +109,10 @@ struct LumaAssistantView: View {
         } message: {
             Text(confirmationRecord.flatMap { $0.suggestedAction }.map(actionDescription) ?? "Nada cambiará sin tu confirmación.")
         }
-        .sheet(item: $replanProposal) { proposal in
+        .sheet(item: Binding(
+            get: { viewModel.replanProposal },
+            set: { viewModel.replanProposal = $0 }
+        )) { proposal in
             ReplanPreviewView(
                 proposal: proposal,
                 tasks: tasks,
@@ -306,7 +328,14 @@ struct LumaAssistantView: View {
         VStack(spacing: 8) {
             Divider().opacity(0.55)
             HStack(alignment: .bottom, spacing: 10) {
-                TextField("Preguntá sobre tu día…", text: $draft, axis: .vertical)
+                TextField(
+                    "Preguntá sobre tu día…",
+                    text: Binding(
+                        get: { viewModel.draft },
+                        set: { viewModel.draft = $0 }
+                    ),
+                    axis: .vertical
+                )
                     .textFieldStyle(.plain)
                     .lineLimit(1 ... 5)
                     .focused($composerFocused)

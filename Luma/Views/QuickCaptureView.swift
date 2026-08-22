@@ -9,35 +9,26 @@ struct QuickCaptureView: View {
     @Query(sort: \AcademicSubject.name) private var subjects: [AcademicSubject]
     @Query(sort: \SubjectGradeItem.createdAt) private var gradeItems: [SubjectGradeItem]
 
-    @State private var draft = ParsedTaskDraft()
+    @State private var viewModel = QuickCaptureViewModel()
     @FocusState private var titleFocused: Bool
 
     private var activeSubjects: [AcademicSubject] {
-        subjects.filter { !$0.isArchived }
+        viewModel.activeSubjects(from: subjects)
     }
 
     private var activeGradeItems: [SubjectGradeItem] {
-        gradeItems.filter { !$0.isArchived }
+        viewModel.activeGradeItems(from: gradeItems)
     }
 
     private var assignmentIsValid: Bool {
-        guard draft.area == .university else { return true }
-        if let grade = draft.grade, !(0 ... 10).contains(grade) { return false }
-        guard let subjectID = draft.academicSubjectID else {
-            return draft.subjectGradeItemID == nil && draft.grade == nil
-        }
-        guard activeSubjects.contains(where: { $0.id == subjectID }) else { return false }
-        guard draft.subjectGradeItemID != nil else { return draft.grade == nil }
-        return activeGradeItems.contains {
-                $0.id == draft.subjectGradeItemID && $0.subjectID == subjectID
-            }
+        viewModel.assignmentIsValid(subjects: subjects, gradeItems: gradeItems)
     }
 
     private var canSave: Bool {
-        let dependencyIsValid = draft.unlocksTaskID.map { id in
+        let dependencyIsValid = viewModel.draft.unlocksTaskID.map { id in
             tasks.contains { $0.id == id && !$0.isCompleted }
         } ?? true
-        return !draft.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        return viewModel.canSave(subjects: subjects, gradeItems: gradeItems)
             && assignmentIsValid
             && dependencyIsValid
     }
@@ -91,25 +82,25 @@ struct QuickCaptureView: View {
 
     private var draftEditor: some View {
         VStack(alignment: .leading, spacing: 14) {
-            TextField("Título", text: $draft.title)
+            TextField("Título", text: $viewModel.draft.title)
                 .textFieldStyle(.roundedBorder)
                 .foregroundStyle(LumaPalette.ink)
                 .focused($titleFocused)
 
             HStack(spacing: 12) {
-                Picker("Área", selection: $draft.area) {
+                Picker("Área", selection: $viewModel.draft.area) {
                     ForEach(LifeArea.allCases) { area in
                         Label(area.title, systemImage: area.symbol).tag(area)
                     }
                 }
 
-                Picker("Energía", selection: $draft.energy) {
+                Picker("Energía", selection: $viewModel.draft.energy) {
                     ForEach(EnergyLevel.allCases) { energy in
                         Text(energy.title).tag(energy)
                     }
                 }
 
-                Picker("Impacto", selection: $draft.impact) {
+                Picker("Impacto", selection: $viewModel.draft.impact) {
                     ForEach(ImpactType.allCases) { impact in
                         Text(impact.title).tag(impact)
                     }
@@ -118,31 +109,31 @@ struct QuickCaptureView: View {
 
             HStack(spacing: 16) {
                 Toggle("Tiene fecha límite", isOn: Binding(
-                    get: { draft.deadline != nil },
-                    set: { draft.deadline = $0 ? (.now.addingTimeInterval(86400)) : nil }
+                    get: { viewModel.draft.deadline != nil },
+                    set: { viewModel.draft.deadline = $0 ? (.now.addingTimeInterval(86400)) : nil }
                 ))
 
-                if draft.deadline != nil {
+                if viewModel.draft.deadline != nil {
                     DatePicker(
                         "",
-                        selection: Binding(get: { draft.deadline ?? .now }, set: { draft.deadline = $0 }),
+                        selection: Binding(get: { viewModel.draft.deadline ?? .now }, set: { viewModel.draft.deadline = $0 }),
                         displayedComponents: [.date]
                     )
                     .labelsHidden()
                 }
 
-                Stepper("\(draft.estimatedMinutes) min", value: $draft.estimatedMinutes, in: 5 ... 480, step: 5)
+                Stepper("\(viewModel.draft.estimatedMinutes) min", value: $viewModel.draft.estimatedMinutes, in: 5 ... 480, step: 5)
                 Spacer()
             }
 
-            if draft.area == .university {
+            if viewModel.draft.area == .university {
                 AcademicTaskFields(
                     subjects: activeSubjects,
                     gradeItems: activeGradeItems,
-                    subjectID: $draft.academicSubjectID,
-                    gradeItemID: $draft.subjectGradeItemID,
-                    grade: $draft.grade,
-                    legacyWeight: $draft.academicWeight,
+                    subjectID: $viewModel.draft.academicSubjectID,
+                    gradeItemID: $viewModel.draft.subjectGradeItemID,
+                    grade: $viewModel.draft.grade,
+                    legacyWeight: $viewModel.draft.academicWeight,
                     isCompleted: false
                 )
             }
@@ -150,7 +141,7 @@ struct QuickCaptureView: View {
             TaskDependencyPicker(
                 sourceTaskID: nil,
                 tasks: tasks,
-                selectedTaskID: $draft.unlocksTaskID
+                selectedTaskID: $viewModel.draft.unlocksTaskID
             )
         }
         .padding(16)
@@ -159,19 +150,19 @@ struct QuickCaptureView: View {
 
     private func save() {
         let task = LumaTask(
-            title: draft.title,
-            area: draft.area,
-            deadline: draft.deadline,
-            estimatedMinutes: draft.estimatedMinutes,
-            energy: draft.energy,
-            impact: draft.impact,
-            academicWeight: draft.academicWeight,
-            academicSubjectID: draft.area == .university ? draft.academicSubjectID : nil,
-            subjectGradeItemID: draft.area == .university ? draft.subjectGradeItemID : nil,
-            grade: draft.area == .university ? draft.grade : nil,
-            unlocksAnotherTask: draft.unlocksTaskID != nil,
-            unlocksTaskID: draft.unlocksTaskID,
-            notes: draft.notes
+            title: viewModel.draft.title,
+            area: viewModel.draft.area,
+            deadline: viewModel.draft.deadline,
+            estimatedMinutes: viewModel.draft.estimatedMinutes,
+            energy: viewModel.draft.energy,
+            impact: viewModel.draft.impact,
+            academicWeight: viewModel.draft.academicWeight,
+            academicSubjectID: viewModel.draft.area == .university ? viewModel.draft.academicSubjectID : nil,
+            subjectGradeItemID: viewModel.draft.area == .university ? viewModel.draft.subjectGradeItemID : nil,
+            grade: viewModel.draft.area == .university ? viewModel.draft.grade : nil,
+            unlocksAnotherTask: viewModel.draft.unlocksTaskID != nil,
+            unlocksTaskID: viewModel.draft.unlocksTaskID,
+            notes: viewModel.draft.notes
         )
         modelContext.insert(task)
         try? modelContext.save()
@@ -189,8 +180,7 @@ struct MenuBarCaptureView: View {
     @Query(sort: \FocusSession.endedAt, order: .reverse) private var focusSessions: [FocusSession]
     @Query(sort: \AcademicSubject.name) private var subjects: [AcademicSubject]
     @Query(sort: \SubjectGradeItem.createdAt) private var gradeItems: [SubjectGradeItem]
-    @State private var input = ""
-    @State private var saved = false
+    @State private var viewModel = MenuBarCaptureViewModel()
 
     private let parser = NaturalLanguageTaskParser()
     private let learningEngine = BehaviorLearningEngine()
@@ -221,12 +211,12 @@ struct MenuBarCaptureView: View {
                     .foregroundStyle(.secondary)
             }
 
-            TextField("¿Qué tenés pendiente?", text: $input)
+            TextField("¿Qué tenés pendiente?", text: $viewModel.input)
                 .textFieldStyle(.roundedBorder)
                 .foregroundStyle(LumaPalette.ink)
                 .onSubmit(save)
 
-            if saved {
+            if viewModel.saved {
                 Label("Guardado. Yo lo acomodo.", systemImage: "checkmark.circle.fill")
                     .font(.caption)
                     .foregroundStyle(LumaPalette.sage)
@@ -273,7 +263,7 @@ struct MenuBarCaptureView: View {
                 Button("Guardar", action: save)
                     .buttonStyle(.borderedProminent)
                     .tint(LumaPalette.indigo)
-                    .disabled(input.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    .disabled(viewModel.input.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             }
         }
         .padding(16)
@@ -281,8 +271,8 @@ struct MenuBarCaptureView: View {
     }
 
     private func save() {
-        guard !input.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
-        let draft = parser.parse(input)
+        guard !viewModel.input.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+        let draft = parser.parse(viewModel.input)
         let task = LumaTask(
             title: draft.title,
             area: draft.area,
@@ -298,11 +288,11 @@ struct MenuBarCaptureView: View {
         try? modelContext.save()
         try? calendarService.syncTask(task)
         appState.refreshPlan()
-        input = ""
-        saved = true
+        viewModel.input = ""
+        viewModel.saved = true
         Task {
             try? await Task.sleep(for: .seconds(2))
-            saved = false
+            viewModel.saved = false
         }
     }
 }

@@ -1,5 +1,5 @@
 {
-  "latestVersion": "0.5.0",
-  "downloadURL": "https://github.com/MatiasEz/luma/releases/download/v0.5.0/Luma-0.5.0-macOS.dmg",
-  "notes": "Nuevo seguimiento académico: evaluaciones próximas y esperando nota, carga directa desde el Inbox, carga rápida de calificaciones y resúmenes por materia más claros."
+  "latestVersion": "0.6.0",
+  "downloadURL": "https://github.com/MatiasEz/luma/releases/download/v0.6.0/Luma-0.6.0-macOS.dmg",
+  "notes": "Nuevo flujo inteligente con acciones desde el chat, centro de atención, agenda más flexible y una arquitectura MVVM más mantenible en todas las pantallas."
 }

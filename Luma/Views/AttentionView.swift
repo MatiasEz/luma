@@ -12,45 +12,26 @@ struct AttentionView: View {
     @Query(sort: \SubjectGradeItem.createdAt) private var gradeItems: [SubjectGradeItem]
     @Query(sort: \LumaReplanRecord.createdAt, order: .reverse) private var replans: [LumaReplanRecord]
 
-    @State private var editingTask: LumaTask?
+    @State private var viewModel = AttentionViewModel()
 
     private var awaitingGrade: [LumaTask] {
-        tasks.filter { $0.academicEvaluationStatus == .awaitingGrade }
+        viewModel.awaitingGrade(tasks: tasks)
     }
 
     private var overdue: [LumaTask] {
-        tasks.filter { task in
-            !task.isCompleted && (task.deadline.map { $0 < .now } ?? false)
-        }
+        viewModel.overdue(tasks: tasks)
     }
 
     private var blocked: [LumaTask] {
-        let overdueIDs = Set(overdue.map(\.id))
-        return tasks.filter {
-            !$0.isCompleted
-                && !overdueIDs.contains($0.id)
-                && TaskDependencyResolver.isBlocked($0, in: tasks)
-        }
+        viewModel.blocked(tasks: tasks)
     }
 
     private var staleWithoutDate: [LumaTask] {
-        let blockedIDs = Set(blocked.map(\.id))
-        return tasks.filter {
-            !$0.isCompleted && $0.deadline == nil
-                && !blockedIDs.contains($0.id)
-                && Date.now.timeIntervalSince($0.createdAt) >= 3 * 86_400
-        }
+        viewModel.staleWithoutDate(tasks: tasks)
     }
 
     private var incompleteSubjects: [(subject: AcademicSubject, configured: Double)] {
-        subjects.compactMap { subject in
-            guard !subject.isArchived else { return nil }
-            let total = gradeItems
-                .filter { !$0.isArchived && $0.subjectID == subject.id }
-                .reduce(0) { $0 + $1.weightPercent }
-            guard abs(total - 100) > 0.001 else { return nil }
-            return (subject, total)
-        }
+        viewModel.incompleteSubjects(subjects: subjects, gradeItems: gradeItems)
     }
 
     private var issueCount: Int {
@@ -119,7 +100,10 @@ struct AttentionView: View {
             .frame(maxWidth: 1040, alignment: .leading)
         }
         .navigationTitle("Atención")
-        .sheet(item: $editingTask) { task in
+        .sheet(item: Binding(
+            get: { viewModel.editingTask },
+            set: { viewModel.editingTask = $0 }
+        )) { task in
             TaskEditorView(task: task)
                 .frame(width: 720, height: 690)
         }
@@ -180,7 +164,7 @@ struct AttentionView: View {
                                 task: task,
                                 detail: attentionDetail(for: task),
                                 tint: tint,
-                                onOpen: { editingTask = task },
+                                onOpen: { viewModel.editingTask = task },
                                 onStart: { appState.startFocus(for: task.id) },
                                 onComplete: { complete(task) }
                             )

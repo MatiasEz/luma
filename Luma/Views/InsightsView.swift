@@ -7,14 +7,15 @@ struct InsightsView: View {
     @Environment(\.modelContext) private var modelContext
     @Query(sort: \FocusSession.endedAt, order: .reverse) private var sessions: [FocusSession]
 
-    @State private var aiSummary: String?
-    @State private var deleteConfirmationPresented = false
-    @State private var ignoreWeekConfirmationPresented = false
+    @State private var viewModel = InsightsViewModel()
 
-    private let engine = BehaviorLearningEngine()
+    private var aiSummary: String? {
+        get { viewModel.aiSummary }
+        nonmutating set { viewModel.aiSummary = newValue }
+    }
 
     private var profile: UserRhythmProfile {
-        engine.profile(from: sessions)
+        viewModel.profile(from: sessions)
     }
 
     var body: some View {
@@ -46,13 +47,19 @@ struct InsightsView: View {
             .frame(maxWidth: 980, alignment: .leading)
         }
         .navigationTitle("Aprendizajes")
-        .alert("¿Ignorar esta semana?", isPresented: $ignoreWeekConfirmationPresented) {
+        .alert("¿Ignorar esta semana?", isPresented: Binding(
+            get: { viewModel.ignoreWeekConfirmationPresented },
+            set: { viewModel.ignoreWeekConfirmationPresented = $0 }
+        )) {
             Button("Cancelar", role: .cancel) {}
             Button("Ignorar semana") { ignoreCurrentWeek() }
         } message: {
             Text("Las sesiones seguirán guardadas, pero no influirán en las recomendaciones.")
         }
-        .alert("¿Borrar todo el historial?", isPresented: $deleteConfirmationPresented) {
+        .alert("¿Borrar todo el historial?", isPresented: Binding(
+            get: { viewModel.deleteConfirmationPresented },
+            set: { viewModel.deleteConfirmationPresented = $0 }
+        )) {
             Button("Cancelar", role: .cancel) {}
             Button("Borrar historial", role: .destructive) { deleteHistory() }
         } message: {
@@ -184,7 +191,7 @@ struct InsightsView: View {
             )
 
             VStack(alignment: .leading, spacing: 14) {
-                Text(aiSummary ?? engine.weeklySummary(for: profile))
+                Text(aiSummary ?? viewModel.weeklySummary(for: profile))
                     .font(.body)
                     .foregroundStyle(LumaPalette.ink)
                     .fixedSize(horizontal: false, vertical: true)
@@ -339,7 +346,7 @@ struct InsightsView: View {
 
     private var ignoreWeekButton: some View {
         Button("Ignorar esta semana") {
-            ignoreWeekConfirmationPresented = true
+                viewModel.ignoreWeekConfirmationPresented = true
         }
         .disabled(!hasUsableSessionsThisWeek)
     }
@@ -351,7 +358,7 @@ struct InsightsView: View {
 
     private var deleteHistoryButton: some View {
         Button("Borrar historial", role: .destructive) {
-            deleteConfirmationPresented = true
+                viewModel.deleteConfirmationPresented = true
         }
         .disabled(sessions.isEmpty)
     }
@@ -365,10 +372,10 @@ struct InsightsView: View {
         do {
             aiSummary = try await aiEngine.rhythmSummary(
                 profile: profile,
-                facts: engine.weeklySummary(for: profile)
+                facts: viewModel.weeklySummary(for: profile)
             )
         } catch {
-            aiSummary = engine.weeklySummary(for: profile)
+            aiSummary = viewModel.weeklySummary(for: profile)
         }
     }
 

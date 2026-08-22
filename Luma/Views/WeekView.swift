@@ -3,12 +3,12 @@ import SwiftUI
 
 struct WeekView: View {
     @Query(sort: \LumaTask.deadline) private var tasks: [LumaTask]
+    @State private var viewModel = WeekViewModel()
 
     private let calendar = Calendar.current
 
     private var days: [Date] {
-        let today = calendar.startOfDay(for: .now)
-        return (0 ..< 7).compactMap { calendar.date(byAdding: .day, value: $0, to: today) }
+        viewModel.days(calendar: calendar)
     }
 
     var body: some View {
@@ -39,10 +39,7 @@ struct WeekView: View {
     }
 
     private func dayColumn(_ day: Date) -> some View {
-        let dayTasks = tasks.filter { task in
-            guard let deadline = task.deadline, !task.isCompleted else { return false }
-            return calendar.isDate(deadline, inSameDayAs: day)
-        }
+        let dayTasks = viewModel.tasks(on: day, from: tasks, calendar: calendar)
 
         return VStack(alignment: .leading, spacing: 12) {
             VStack(alignment: .leading, spacing: 2) {
@@ -84,7 +81,7 @@ struct WeekView: View {
     }
 
     private var tasksWithoutDate: some View {
-        let undated = tasks.filter { !$0.isCompleted && $0.deadline == nil }
+        let undated = viewModel.tasksWithoutDate(from: tasks)
 
         return VStack(alignment: .leading, spacing: 12) {
             SectionTitle(

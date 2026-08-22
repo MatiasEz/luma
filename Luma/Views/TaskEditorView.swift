@@ -12,60 +12,27 @@ struct TaskEditorView: View {
 
     let task: LumaTask
 
-    @State private var title: String
-    @State private var area: LifeArea
-    @State private var deadline: Date?
-    @State private var estimatedMinutes: Int
-    @State private var energy: EnergyLevel
-    @State private var impact: ImpactType
-    @State private var academicWeight: Double?
-    @State private var academicSubjectID: UUID?
-    @State private var subjectGradeItemID: UUID?
-    @State private var grade: Double?
-    @State private var unlocksTaskID: UUID?
-    @State private var notes: String
-    @State private var isCompleted: Bool
+    @State private var viewModel: TaskEditorViewModel
 
     init(task: LumaTask) {
         self.task = task
-        _title = State(initialValue: task.title)
-        _area = State(initialValue: task.area)
-        _deadline = State(initialValue: task.deadline)
-        _estimatedMinutes = State(initialValue: task.estimatedMinutes)
-        _energy = State(initialValue: task.energy)
-        _impact = State(initialValue: task.impact)
-        _academicWeight = State(initialValue: task.academicWeight)
-        _academicSubjectID = State(initialValue: task.academicSubjectID)
-        _subjectGradeItemID = State(initialValue: task.subjectGradeItemID)
-        _grade = State(initialValue: task.grade)
-        _unlocksTaskID = State(initialValue: task.unlocksTaskID)
-        _notes = State(initialValue: task.notes)
-        _isCompleted = State(initialValue: task.isCompleted)
+        _viewModel = State(initialValue: TaskEditorViewModel(task: task))
     }
 
     private var availableSubjects: [AcademicSubject] {
-        subjects.filter { !$0.isArchived || $0.id == academicSubjectID }
+        viewModel.availableSubjects(from: subjects)
     }
 
     private var availableGradeItems: [SubjectGradeItem] {
-        gradeItems.filter { !$0.isArchived || $0.id == subjectGradeItemID }
+        viewModel.availableGradeItems(from: gradeItems)
     }
 
     private var assignmentIsValid: Bool {
-        guard area == .university else { return true }
-        if let grade, !(0 ... 10).contains(grade) { return false }
-        guard let academicSubjectID else {
-            return subjectGradeItemID == nil && grade == nil
-        }
-        guard availableSubjects.contains(where: { $0.id == academicSubjectID }) else { return false }
-        guard subjectGradeItemID != nil else { return grade == nil }
-        return availableGradeItems.contains {
-                $0.id == subjectGradeItemID && $0.subjectID == academicSubjectID
-            }
+        viewModel.assignmentIsValid(subjects: subjects, gradeItems: gradeItems)
     }
 
     private var canSave: Bool {
-        let dependencyIsValid = unlocksTaskID.map { targetID in
+        let dependencyIsValid = viewModel.unlocksTaskID.map { targetID in
             tasks.contains { $0.id == targetID }
                 && !TaskDependencyResolver.wouldCreateCycle(
                     sourceTaskID: task.id,
@@ -73,7 +40,7 @@ struct TaskEditorView: View {
                     in: tasks
                 )
         } ?? true
-        return !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        return viewModel.canSave(subjects: subjects, gradeItems: gradeItems)
             && assignmentIsValid
             && dependencyIsValid
     }
@@ -86,7 +53,7 @@ struct TaskEditorView: View {
                 VStack(alignment: .leading, spacing: 18) {
                     mainFields
                     planningFields
-                    if area == .university {
+                    if viewModel.area == .university {
                         academicFields
                     }
                     notesField
@@ -125,24 +92,24 @@ struct TaskEditorView: View {
 
     private var mainFields: some View {
         VStack(alignment: .leading, spacing: 14) {
-            TextField("Título", text: $title)
+            TextField("Título", text: $viewModel.title)
                 .textFieldStyle(.roundedBorder)
                 .foregroundStyle(LumaPalette.ink)
 
             HStack(spacing: 12) {
-                Picker("Área", selection: $area) {
+                Picker("Área", selection: $viewModel.area) {
                     ForEach(LifeArea.allCases) { option in
                         Label(option.title, systemImage: option.symbol).tag(option)
                     }
                 }
 
-                Picker("Energía", selection: $energy) {
+                Picker("Energía", selection: $viewModel.energy) {
                     ForEach(EnergyLevel.allCases) { option in
                         Text(option.title).tag(option)
                     }
                 }
 
-                Picker("Impacto", selection: $impact) {
+                Picker("Impacto", selection: $viewModel.impact) {
                     ForEach(ImpactType.allCases) { option in
                         Text(option.title).tag(option)
                     }
@@ -155,32 +122,32 @@ struct TaskEditorView: View {
         VStack(alignment: .leading, spacing: 14) {
             HStack(spacing: 16) {
                 Toggle("Tiene fecha límite", isOn: Binding(
-                    get: { deadline != nil },
-                    set: { deadline = $0 ? (.now.addingTimeInterval(86400)) : nil }
+                    get: { viewModel.deadline != nil },
+                    set: { viewModel.deadline = $0 ? (.now.addingTimeInterval(86400)) : nil }
                 ))
 
-                if deadline != nil {
+                if viewModel.deadline != nil {
                     DatePicker(
                         "",
-                        selection: Binding(get: { deadline ?? .now }, set: { deadline = $0 }),
+                        selection: Binding(get: { viewModel.deadline ?? .now }, set: { viewModel.deadline = $0 }),
                         displayedComponents: [.date]
                     )
                     .labelsHidden()
                 }
 
-                Stepper("\(estimatedMinutes) min", value: $estimatedMinutes, in: 5 ... 480, step: 5)
+                Stepper("\(viewModel.estimatedMinutes) min", value: $viewModel.estimatedMinutes, in: 5 ... 480, step: 5)
                 Spacer()
             }
 
             HStack(spacing: 18) {
-                Toggle("Completada", isOn: $isCompleted)
+                Toggle("Completada", isOn: $viewModel.isCompleted)
                 Spacer()
             }
 
             TaskDependencyPicker(
                 sourceTaskID: task.id,
                 tasks: tasks,
-                selectedTaskID: $unlocksTaskID
+                selectedTaskID: $viewModel.unlocksTaskID
             )
         }
     }
@@ -189,11 +156,11 @@ struct TaskEditorView: View {
         AcademicTaskFields(
             subjects: availableSubjects,
             gradeItems: availableGradeItems,
-            subjectID: $academicSubjectID,
-            gradeItemID: $subjectGradeItemID,
-            grade: $grade,
-            legacyWeight: $academicWeight,
-            isCompleted: isCompleted
+            subjectID: $viewModel.academicSubjectID,
+            gradeItemID: $viewModel.subjectGradeItemID,
+            grade: $viewModel.grade,
+            legacyWeight: $viewModel.academicWeight,
+            isCompleted: viewModel.isCompleted
         )
     }
 
@@ -211,7 +178,7 @@ struct TaskEditorView: View {
                 }
             }
 
-            TextEditor(text: $notes)
+            TextEditor(text: $viewModel.notes)
                 .font(.body)
                 .foregroundColor(LumaPalette.ink)
                 .scrollContentBackground(.hidden)
@@ -242,27 +209,7 @@ struct TaskEditorView: View {
     }
 
     private func save() {
-        task.title = title.trimmingCharacters(in: .whitespacesAndNewlines)
-        task.area = area
-        task.deadline = deadline
-        task.estimatedMinutes = estimatedMinutes
-        task.energy = energy
-        task.impact = impact
-        task.academicWeight = area == .university ? academicWeight : nil
-        task.academicSubjectID = area == .university ? academicSubjectID : nil
-        task.subjectGradeItemID = area == .university ? subjectGradeItemID : nil
-        task.grade = area == .university ? grade : nil
-        task.unlocksAnotherTask = unlocksTaskID != nil
-        task.unlocksTaskID = unlocksTaskID
-        task.notes = notes
-
-        if isCompleted, !task.isCompleted {
-            task.markCompleted()
-        } else if !isCompleted, task.isCompleted {
-            task.restore()
-        }
-
-        task.touch()
+        viewModel.apply(to: task)
 
         try? modelContext.save()
         try? calendarService.syncTask(task)

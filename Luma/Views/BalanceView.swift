@@ -3,11 +3,10 @@ import SwiftUI
 
 struct BalanceView: View {
     @Query private var tasks: [LumaTask]
+    @State private var viewModel = BalanceViewModel()
 
-    private var activeTasks: [LumaTask] { tasks.filter { !$0.isCompleted } }
-    private var maximumMinutes: Double {
-        Double(max(1, LifeArea.allCases.map(minutes(for:)).max() ?? 1))
-    }
+    private var activeTasks: [LumaTask] { viewModel.activeTasks(from: tasks) }
+    private var maximumMinutes: Double { viewModel.maximumMinutes(tasks: tasks) }
 
     var body: some View {
         ScrollView {
@@ -106,21 +105,14 @@ struct BalanceView: View {
     }
 
     private func minutes(for area: LifeArea) -> Int {
-        activeTasks.filter { $0.area == area }.reduce(0) { $0 + $1.estimatedMinutes }
+        viewModel.minutes(for: area, tasks: tasks)
     }
 
     private func formattedMinutes(_ minutes: Int) -> String {
-        if minutes >= 60 { return "\(minutes / 60) h \(minutes % 60) min" }
-        return "\(minutes) min"
+        viewModel.formattedMinutes(minutes)
     }
 
     private func areaMessage(_ area: LifeArea, minutes: Int) -> String {
-        if minutes == 0 {
-            return area == .rest ? "Hay espacio para descanso real." : "Sin carga visible esta semana."
-        }
-        if Double(minutes) / maximumMinutes > 0.8 {
-            return "Esta área está llevando bastante peso."
-        }
-        return "Carga manejable por ahora."
+        viewModel.areaMessage(area, minutes: minutes, maximumMinutes: maximumMinutes)
     }
 }
