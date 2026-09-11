@@ -92,6 +92,9 @@ final class ExamEditorViewModel {
     var title = ""
     var subjectID: UUID?
     var date = Calendar.current.date(byAdding: .day, value: 14, to: .now) ?? .now
+    var preparationStartDate = Date.now
+    var preparationEnabled = true
+    var academicWeight: Double?
     var topicsRaw = ""
     var selectedTopicKeys: Set<String> = []
     var importance: ExamImportance = .important
@@ -104,6 +107,9 @@ final class ExamEditorViewModel {
             title = exam.title
             subjectID = exam.subjectID
             date = exam.date
+            preparationStartDate = exam.preparationStart
+            preparationEnabled = exam.shouldPrepare
+            academicWeight = exam.academicWeight
             importance = exam.importance
             preparationMinutes = exam.preparationMinutes
             originalTopicTitles = exam.topics

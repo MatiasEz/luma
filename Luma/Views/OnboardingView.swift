@@ -164,7 +164,7 @@ struct OnboardingView: View {
                 availabilityExplanation(
                     symbol: "calendar.badge.checkmark",
                     title: "El calendario evita choques",
-                    detail: "Si lo conectás, Luma descuenta clases, turnos y otros compromisos."
+                    detail: "Si lo conectás, Luma evita ubicar trabajo encima de clases, turnos y otros compromisos."
                 )
                 HStack(spacing: 10) {
                     Image(systemName: "moon.zzz.fill")

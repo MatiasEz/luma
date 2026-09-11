@@ -17,15 +17,16 @@ struct AcademicPlanningService {
         tasks: [LumaTask],
         dailyContext: DailyPlanningContext?,
         in modelContext: ModelContext,
+        saveChanges: Bool = true,
         now: Date = .now
     ) -> Int {
         var inserted = 0
-        inserted += repairLegacyParentExamTasks(exams: exams, tasks: tasks, in: modelContext)
+
         let currentTasks = (try? modelContext.fetch(FetchDescriptor<LumaTask>())) ?? tasks
         inserted += materializeRoutines(routines, tasks: currentTasks, in: modelContext, now: now)
         inserted += materializeExamStudy(exams, tasks: currentTasks, in: modelContext, now: now)
         inserted += materializeRestIfNeeded(context: dailyContext, tasks: currentTasks, in: modelContext, now: now)
-        if inserted > 0 { try? modelContext.save() }
+        if inserted > 0 && saveChanges { try? modelContext.save() }
         return inserted
     }
 
@@ -141,74 +142,54 @@ struct AcademicPlanningService {
         tasks: [LumaTask],
         in modelContext: ModelContext
     ) -> Int {
-        let planningTopics = expandedLeafTopics(topics, examID: exam.id)
+        guard exam.shouldPrepare else { return 0 }
+        let planningTopics = expandedLeafTopics(topics, examID: exam.id).map { topic in
+            var stable = topic
+            stable.id = deterministicUUID("exam-topic-\(exam.id)-\(normalizedTopicTitle(topic.title))")
+            return stable
+        }
         guard !planningTopics.isEmpty else { return 0 }
-
-        #if DEBUG
-        print("🗓️ [PLAN-EXAMEN] Generando plan | examen=\(exam.title) | fecha=\(exam.date.formatted(date: .numeric, time: .omitted)) | temas finales=\(planningTopics.count)")
-        for (index, topic) in planningTopics.enumerated() {
-            print("   #\(index + 1) \(topic.title) | páginas=\(topic.pageLabel) | importancia=\(topic.importance) | duración base=\(topic.suggestedMinutes)m")
-        }
-        #endif
-
-        let planMarker = "LUMA-EXAM-TOPICS:\(exam.id.uuidString)"
-        let drafts = StudyScheduleBuilder.drafts(
-            guideID: exam.id,
-            guideTitle: exam.title,
-            topics: planningTopics,
-            examDate: exam.date
-        )
+        let drafts = StudyScheduleBuilder.drafts(guideID: exam.id, guideTitle: exam.title,
+            topics: planningTopics, examDate: exam.date, now: max(Date.now, exam.preparationStart), calendar: calendar)
+        let previous = tasks.filter { $0.sourceID == exam.id && $0.academicSourceType == .examStudy }
+        var matched = Set<UUID>()
         var inserted = 0
-
-        for draft in drafts {
+        for (index, draft) in drafts.enumerated() {
             let itemKey = draft.topicID?.uuidString ?? "review"
-            let itemMarker = "\(planMarker):\(itemKey)"
-            let stableStudyMarker = draft.topicID
-                .map { "LUMA-STUDY-TOPIC:\($0.uuidString)" }
-                ?? "LUMA-STUDY-REVIEW"
-            guard !tasks.contains(where: {
-                $0.sourceID == exam.id
-                    && ($0.notes.contains(itemMarker) || $0.notes.contains(stableStudyMarker))
-            }) else {
-                #if DEBUG
-                print("⏭️ [PLAN-EXAMEN] Omitida por duplicada | \(draft.title)")
-                #endif
-                continue
+            let itemMarker = "LUMA-EXAM-TOPICS:\(exam.id.uuidString):\(itemKey)"
+            let legacyReview = draft.topicID == nil
+            let existing = previous.first { task in
+                !matched.contains(task.id) && (task.notes.contains(itemMarker)
+                    || normalizedTopicTitle(task.title) == normalizedTopicTitle(draft.title)
+                    || (legacyReview && task.notes.contains("LUMA-STUDY-REVIEW")))
             }
-
-            let scheduledDay = calendar.startOfDay(for: draft.deadline)
-            let task = LumaTask(
-                id: deterministicUUID("exam-pdf-\(exam.id.uuidString)-\(itemKey)"),
-                title: draft.title,
-                area: .university,
-                dueDate: exam.date,
-                deadline: date(on: scheduledDay, minuteOfDay: 19 * 60),
-                estimatedMinutes: draft.estimatedMinutes,
-                energy: draft.energy,
-                impact: .grade,
-                academicWeight: exam.importance.scoreBoost,
-                academicSubjectID: exam.subjectID,
-                notes: generatedTaskNotes(
-                    draftNotes: draft.notes,
-                    sourceFileName: sourceFileName,
-                    itemMarker: itemMarker
-                ),
-                sourceTypeRaw: AcademicTaskSourceType.examStudy.rawValue,
-                sourceID: exam.id,
-                sourceOccurrenceDate: scheduledDay
-            )
-            modelContext.insert(task)
-            inserted += 1
-
-            #if DEBUG
-            print("✅ [PLAN-EXAMEN] Tarea creada | \(task.title) | fecha=\(task.deadline?.formatted(date: .numeric, time: .shortened) ?? "sin fecha") | duración=\(task.estimatedMinutes)m | energía=\(task.energy.title)")
-            #endif
+            let task = existing ?? LumaTask(id: deterministicUUID("exam-pdf-\(exam.id)-\(itemKey)"),
+                title: draft.title, area: .university, estimatedMinutes: draft.estimatedMinutes,
+                energy: draft.energy, impact: .grade, academicSubjectID: exam.subjectID,
+                sourceTypeRaw: AcademicTaskSourceType.examStudy.rawValue, sourceID: exam.id)
+            matched.insert(task.id)
+            task.title = draft.title
+            task.dueDate = exam.date
+            // A suggestion is a day in the shared plan, never an invented 19:00 appointment.
+            if task.planningDetailsRaw == nil, let scheduled = task.deadline, calendar.component(.hour, from: scheduled) == 19, task.sourceOccurrenceDate.map({ calendar.isDate($0, inSameDayAs: scheduled) }) == true { task.deadline = nil }
+            task.academicSubjectID = exam.subjectID
+            task.academicWeight = exam.academicWeight
+            task.sourceOccurrenceDate = draft.deadline
+            task.notes = generatedTaskNotes(draftNotes: draft.notes, sourceFileName: sourceFileName, itemMarker: itemMarker)
+            var details = task.planningDetails
+            details.startDate = exam.preparationStart
+            details.studyOrder = index
+            details.isRetired = false
+            task.planningDetails = details
+            task.touch()
+            if existing == nil { modelContext.insert(task); inserted += 1 }
         }
-
-        if inserted > 0 { try? modelContext.save() }
-        #if DEBUG
-        print("🏁 [PLAN-EXAMEN] Plan terminado | tareas nuevas=\(inserted)")
-        #endif
+        for task in previous where !matched.contains(task.id) && !task.isCompleted {
+            var details = task.planningDetails
+            details.isRetired = true
+            task.planningDetails = details
+            task.touch()
+        }
         return inserted
     }
 
@@ -299,7 +280,7 @@ struct AcademicPlanningService {
                 let day = calendar.startOfDay(for: occurrence)
                 let key = occurrenceKey(sourceID: routine.id, date: day)
                 if !knownKeys.contains(key) {
-                    let deadline = date(on: day, minuteOfDay: routine.minuteOfDay ?? 18 * 60)
+                    let deadline = date(on: day, minuteOfDay: routine.minuteOfDay ?? 0)
                     let task = LumaTask(
                         id: deterministicUUID("routine-\(key)"),
                         title: routine.title,
@@ -341,54 +322,35 @@ struct AcademicPlanningService {
         })
         var inserted = 0
 
-        for exam in exams where !exam.isArchived && exam.date > today && !exam.topics.isEmpty {
-            let hasGeneratedTopicPlan = tasks.contains {
-                $0.sourceID == exam.id
-                    && $0.academicSourceType == .examStudy
-                    && (
-                        $0.notes.contains("LUMA-EXAM-TOPICS:\(exam.id.uuidString)")
-                            || $0.notes.contains("LUMA-EXAM-PDF:\(exam.id.uuidString)")
-                    )
-            }
-            guard !hasGeneratedTopicPlan else { continue }
-
-            let examDay = calendar.startOfDay(for: exam.date)
-            let lastStudyDay = calendar.date(byAdding: .day, value: -1, to: examDay) ?? today
-            let availableDays = max(1, calendar.dateComponents([.day], from: today, to: lastStudyDay).day ?? 1)
-            let minutesPerStage = max(20, Int(ceil(Double(exam.preparationMinutes) / Double(ExamStudyStage.allCases.count))))
-
-            for (index, stage) in ExamStudyStage.allCases.enumerated() {
+        for exam in exams where !exam.isArchived && exam.date >= today && exam.shouldPrepare {
+            let existing = tasks.filter { $0.sourceID == exam.id && $0.academicSourceType == .examStudy }
+            if existing.contains(where: { $0.notes.contains("LUMA-EXAM-TOPICS:") && $0.planningDetails.isRetired != true }) { continue }
+            let stages = Array(ExamStudyStage.allCases)
+            for (index, stage) in stages.enumerated() {
                 let key = "\(exam.id.uuidString)-\(stage.rawValue)"
-                guard !knownKeys.contains(key) else { continue }
-                let progress = Double(index + 1) / Double(ExamStudyStage.allCases.count)
-                let dayOffset = min(availableDays, max(0, Int((Double(availableDays) * progress).rounded(.down))))
-                let scheduledDay = min(
-                    calendar.date(byAdding: .day, value: dayOffset, to: today) ?? today,
-                    lastStudyDay
-                )
-                let topicSummary = exam.topics.prefix(3).joined(separator: ", ")
-                let task = LumaTask(
-                    id: deterministicUUID("exam-\(key)"),
-                    title: "\(stage.title): \(exam.title)",
-                    area: .university,
-                    dueDate: exam.date,
-                    deadline: date(on: scheduledDay, minuteOfDay: 19 * 60),
-                    estimatedMinutes: minutesPerStage,
-                    energy: stage == .read || stage == .summarize ? .high : .medium,
-                    impact: .grade,
-                    academicWeight: exam.importance.scoreBoost,
-                    academicSubjectID: exam.subjectID,
-                    notes: topicSummary.isEmpty ? "Preparación para \(exam.title)" : "Temas: \(topicSummary)",
-                    sourceTypeRaw: AcademicTaskSourceType.examStudy.rawValue,
-                    sourceID: exam.id,
-                    sourceOccurrenceDate: scheduledDay,
-                    studyStageRaw: stage.rawValue
-                )
-                modelContext.insert(task)
-                knownKeys.insert(key)
-                inserted += 1
+                let old = existing.first { $0.studyStage == stage }
+                let task = old ?? LumaTask(id: deterministicUUID("exam-\(key)"),
+                    title: "\(stage.title): \(exam.title)", area: .university,
+                    estimatedMinutes: max(10, Int(ceil(Double(exam.preparationMinutes) / Double(stages.count)))),
+                    energy: .medium, impact: .grade, academicSubjectID: exam.subjectID,
+                    sourceTypeRaw: AcademicTaskSourceType.examStudy.rawValue, sourceID: exam.id, studyStageRaw: stage.rawValue)
+                if task.planningDetailsRaw == nil, let scheduled = task.deadline, calendar.component(.hour, from: scheduled) == 19, task.sourceOccurrenceDate.map({ calendar.isDate($0, inSameDayAs: scheduled) }) == true { task.deadline = nil }
+                task.title = "\(stage.title): \(exam.title)"
+                task.dueDate = exam.date
+                task.academicWeight = exam.academicWeight
+                task.academicSubjectID = exam.subjectID
+                task.notes = exam.topics.isEmpty
+                    ? "Preparación orientativa, sin temario cargado. Usá el material que tengas; ajustá esta estimación después del primer avance."
+                    : "Temas: \(exam.topics.joined(separator: ", "))"
+                var details = task.planningDetails
+                details.startDate = exam.preparationStart
+                details.studyOrder = index
+                details.isRetired = false
+                task.planningDetails = details
+                if old == nil { modelContext.insert(task); inserted += 1 }
             }
         }
+
         return inserted
     }
 

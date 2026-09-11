@@ -4,6 +4,45 @@ import Observation
 @MainActor
 @Observable
 final class FocusRoomViewModel {
+    @ObservationIgnored private let defaults: UserDefaults
+    private(set) var sessionID = UUID()
+    var plannedBlockID: UUID?
+    @ObservationIgnored private var checkpointAt = Date.now
+    @ObservationIgnored private var fractionalElapsedSeconds = 0.0
+    static let persistenceKey = "lumaActiveFocus.v1"
+
+    init(defaults: UserDefaults = .standard, now: Date = .now) {
+        self.defaults = defaults
+        if let data = defaults.data(forKey: Self.persistenceKey),
+           let saved = try? JSONDecoder().decode(ActiveFocusSnapshot.self, from: data),
+           (1...1440).contains(saved.durationMinutes), !saved.completed {
+            sessionID = saved.id
+            plannedBlockID = saved.plannedBlockID
+            selectedTaskID = saved.taskID
+            durationMinutes = saved.durationMinutes
+            elapsedSeconds = saved.elapsed(at: now)
+            remainingSeconds = max(0, durationMinutes * 60 - elapsedSeconds)
+            isRunning = saved.isRunning
+            sessionStartedAt = saved.startedAt
+        }
+        checkpointAt = now
+    }
+
+    func checkpoint(now: Date = .now, advance: Bool = false) {
+        if advance, isRunning {
+            let additional = fractionalElapsedSeconds + max(0, now.timeIntervalSince(checkpointAt))
+            let wholeSeconds = Int(floor(additional + 0.000001))
+            fractionalElapsedSeconds = max(0, additional - Double(wholeSeconds))
+            elapsedSeconds = min(durationMinutes * 60, elapsedSeconds + wholeSeconds)
+            remainingSeconds = max(0, durationMinutes * 60 - elapsedSeconds)
+        }
+        checkpointAt = now
+        let snapshot = ActiveFocusSnapshot(id: sessionID, taskID: selectedTaskID,
+            durationMinutes: durationMinutes, elapsedSeconds: elapsedSeconds, isRunning: isRunning,
+            startedAt: sessionStartedAt, checkpointAt: now, completed: completedSession, plannedBlockID: plannedBlockID)
+        if let data = try? JSONEncoder().encode(snapshot) { defaults.set(data, forKey: Self.persistenceKey) }
+    }
+
     var selectedTaskID: UUID?
     var durationMinutes = 25
     var remainingSeconds = 25 * 60
@@ -20,8 +59,8 @@ final class FocusRoomViewModel {
     }
 
     func selectedTask(from tasks: [LumaTask]) -> LumaTask? {
-        let pending = pendingTasks(from: tasks)
-        return pending.first { $0.id == selectedTaskID } ?? pending.first
+        if let selectedTaskID { return tasks.first { $0.id == selectedTaskID } }
+        return pendingTasks(from: tasks).first
     }
 
     var timeString: String {
@@ -33,14 +72,19 @@ final class FocusRoomViewModel {
     }
 
     func reset() {
+        guard elapsedSeconds == 0 || completedSession else { return }
+        sessionID = UUID()
+        plannedBlockID = nil
         isRunning = false
         ambientAudio.stop()
         completedSession = false
         elapsedSeconds = 0
+        fractionalElapsedSeconds = 0
         lastRecordedMinutes = 0
         sessionStartedAt = nil
         recordedSession = nil
         remainingSeconds = durationMinutes * 60
+        checkpoint()
     }
 }
 

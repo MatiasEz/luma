@@ -31,7 +31,7 @@ final class AppShellViewModel {
                 $0.unlocksTaskID?.uuidString ?? "sin-dependencia",
             ].joined(separator: ":")
         }.joined(separator: "|")
-        let sessionPart = sessions.map { "\($0.id):\($0.actualMinutes):\($0.completedTask)" }.joined(separator: "|")
+        let sessionPart = sessions.map { "\($0.id):\($0.actualMinutes):\($0.completedTask):\($0.ignoredFromLearning):\($0.updatedAt?.timeIntervalSince1970 ?? 0)" }.joined(separator: "|")
         let profilePart = profiles.map { "\($0.id):\($0.updatedAt.timeIntervalSinceReferenceDate)" }.joined(separator: "|")
         let chatPart = messages.map { "\($0.id):\($0.appliedAt?.timeIntervalSinceReferenceDate ?? 0)" }.joined(separator: "|")
         let replanPart = replans.map(\.id.uuidString).joined(separator: "|")
@@ -96,8 +96,10 @@ final class DashboardViewModel {
         tasks: [LumaTask],
         planner: TaskPlanner,
         appState: AppState,
-        now: Date = .now
+        now: Date = .now,
+        busyBlocks: [BusyTimeBlock]? = nil
     ) {
+        appState.refreshSharedPlan(tasks: tasks, planner: planner, now: now, busyBlocks: busyBlocks)
         visibleRecommendations = appState.dailyRecommendations(from: tasks, planner: planner, now: now)
         let plannedIDs = Set(visibleRecommendations.map(\.task.id))
         // Spare time is allocated when a plan is created. A completed block must
@@ -122,7 +124,10 @@ final class DashboardViewModel {
         )
         needsCapacityDecision = planner.needsCapacityDecision(
             from: tasks,
-            recommendations: visibleRecommendations,
+            recommendations: visibleRecommendations.map { item in
+                let minutes = appState.workBlocks(on: now, taskID: item.id).filter { $0.status != .completed }.reduce(0) { $0 + $1.minutes }
+                return PlanRecommendation(task: item.task, score: item.score, reason: item.reason, suggestedMinutes: max(minutes, item.suggestedMinutes))
+            },
             now: now,
             preference: appState.energyPreference
         )
@@ -132,7 +137,7 @@ final class DashboardViewModel {
             now: now
         )
         overdueTasksNeedingReview = planner.overdueTasksNeedingReview(from: tasks, now: now)
-        workload = planner.workload(from: tasks, now: now)
+        workload = appState.sharedPlan.capacityIssues.isEmpty ? planner.workload(from: tasks, now: now) : .high
         hasPreparedPresentation = true
     }
 }
@@ -166,6 +171,7 @@ final class InboxViewModel {
         calendar: Calendar = .current
     ) -> [LumaTask] {
         let matches = tasks.filter { task in
+            if task.planningDetails.isRetired == true { return false }
             let matchesArea = selectedArea == nil || task.area == selectedArea
             let matchesFilter = selectedSmartFilter.matches(
                 task,
@@ -379,14 +385,14 @@ final class WeekViewModel {
     func periodTitle(calendar: Calendar = .current) -> String {
         switch span {
         case .month:
-            return referenceDate.formatted(.dateTime.month(.wide).year())
+            return referenceDate.formatted(.dateTime.month(.wide).year().locale(Locale(identifier: "es_AR")))
         case .week:
             let visible = visibleDays(calendar: calendar)
             guard let first = visible.first, let last = visible.last else { return "Semana" }
             if calendar.component(.month, from: first) == calendar.component(.month, from: last) {
-                return "\(first.formatted(.dateTime.day()))–\(last.formatted(.dateTime.day().month(.wide).year()))"
+                return "\(first.formatted(.dateTime.day().locale(Locale(identifier: "es_AR"))))–\(last.formatted(.dateTime.day().month(.wide).year().locale(Locale(identifier: "es_AR"))))"
             }
-            return "\(first.formatted(.dateTime.day().month(.abbreviated))) – \(last.formatted(.dateTime.day().month(.abbreviated).year()))"
+            return "\(first.formatted(.dateTime.day().month(.abbreviated).locale(Locale(identifier: "es_AR")))) – \(last.formatted(.dateTime.day().month(.abbreviated).year().locale(Locale(identifier: "es_AR"))))"
         }
     }
 
@@ -404,8 +410,8 @@ final class WeekViewModel {
 
     func tasks(on day: Date, from tasks: [LumaTask], calendar: Calendar = .current) -> [LumaTask] {
         tasks.filter { task in
-            guard let deadline = task.deadline else { return false }
-            return calendar.isDate(deadline, inSameDayAs: day)
+            let delivery = task.academicSourceType == .examStudy ? nil : task.dueDate
+            return [task.deadline, delivery].compactMap { $0 }.contains { calendar.isDate($0, inSameDayAs: day) }
         }
         .sorted {
             if let lhs = $0.deadline, let rhs = $1.deadline, lhs != rhs { return lhs < rhs }

@@ -8,7 +8,7 @@ struct FocusRoomView: View {
     @Query(sort: \LumaTask.createdAt) private var tasks: [LumaTask]
     @Query(sort: \DailyPlanningContext.updatedAt) private var dailyContexts: [DailyPlanningContext]
 
-    @State private var viewModel = FocusRoomViewModel()
+    private var viewModel: FocusRoomViewModel { appState.focusSession }
     @State private var sessionSaveFailed = false
     @State private var completedTaskID: UUID?
 
@@ -67,8 +67,9 @@ struct FocusRoomView: View {
             if proxy.size.width >= 760 {
                 HStack(spacing: 0) {
                     focusPanel(compact: false)
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    sidePanel
+                        .frame(width: max(0, proxy.size.width - 320))
+                        .frame(maxHeight: .infinity)
+                    ScrollView { sidePanel }
                         .frame(width: 320)
                         .background(Color.white.opacity(0.30))
                 }
@@ -90,27 +91,32 @@ struct FocusRoomView: View {
         .navigationTitle("Focus Room")
         .onReceive(timer) { _ in tick() }
         .onChange(of: durationMinutes) { _, newValue in
-            guard !isRunning else { return }
+            guard !isRunning, elapsedSeconds == 0 else { return }
             remainingSeconds = newValue * 60
         }
         .onChange(of: selectedTaskID) { _, newValue in
             appState.focusTaskID = newValue
             reset()
+            viewModel.checkpoint()
         }
+        .onChange(of: isRunning) { _, _ in viewModel.checkpoint() }
+        .onChange(of: completedSession) { _, _ in viewModel.checkpoint() }
         .onAppear {
-            if selectedTaskID == nil || !pendingTasks.contains(where: { $0.id == selectedTaskID }) {
+            viewModel.checkpoint(now: .now, advance: true)
+            if (elapsedSeconds == 0 || completedSession), selectedTaskID == nil || !pendingTasks.contains(where: { $0.id == selectedTaskID }) {
                 selectedTaskID = appState.focusTaskID ?? pendingTasks.first?.id
                 if !pendingTasks.contains(where: { $0.id == selectedTaskID }) {
                     selectedTaskID = pendingTasks.first?.id
                 }
             }
-            if let requestedDuration = appState.focusDurationMinutes {
+            if let requestedDuration = appState.focusDurationMinutes, elapsedSeconds == 0 {
                 durationMinutes = requestedDuration
                 remainingSeconds = requestedDuration * 60
                 appState.focusDurationMinutes = nil
             }
         }
         .onDisappear {
+            viewModel.checkpoint(now: .now, advance: true)
             ambientAudio.stop()
         }
         .alert("No se pudo guardar la sesión", isPresented: $sessionSaveFailed) {
@@ -196,6 +202,7 @@ struct FocusRoomView: View {
         Button {
             if completedSession { reset() }
             if !isRunning, sessionStartedAt == nil {
+                if viewModel.plannedBlockID == nil { viewModel.plannedBlockID = selectedTaskID.flatMap { appState.workBlocks(on: .now, taskID: $0).first { $0.status == .confirmed }?.id } }
                 sessionStartedAt = .now
             }
             if isRunning {
@@ -219,7 +226,10 @@ struct FocusRoomView: View {
     }
 
     private var resetButton: some View {
-        Button("Reiniciar") { reset() }
+        Button(elapsedSeconds > 0 && !completedSession ? "Guardar y reiniciar" : "Reiniciar") {
+            if elapsedSeconds > 0 && !completedSession { finishSessionEarly() }
+            if !sessionSaveFailed { reset() }
+        }
             .buttonStyle(.bordered)
             .controlSize(.large)
     }
@@ -246,13 +256,19 @@ struct FocusRoomView: View {
                     .foregroundStyle(LumaPalette.secondaryInk)
             }
 
+            if selectedTask == nil, elapsedSeconds > 0, !completedSession {
+                Text("El pendiente de esta sesión ya no está disponible.").font(.caption)
+                Button("Cerrar esta sesión") { completedSession = true; reset() }
+            }
             taskSelector
+                .disabled(elapsedSeconds > 0 && !completedSession)
+            if elapsedSeconds > 0 && !completedSession { Text("Terminá esta sesión para cambiar de tarea. Tu avance queda guardado aunque salgas de Focus.").font(.caption).foregroundStyle(LumaPalette.secondaryInk) }
 
             VStack(alignment: .leading, spacing: 10) {
                 Text("Duración")
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(LumaPalette.secondaryInk)
-                durationSelector
+                durationSelector.disabled(elapsedSeconds > 0 && !completedSession)
             }
 
             ambienceCard
@@ -271,12 +287,21 @@ struct FocusRoomView: View {
                         else { return }
                         task.markCompleted()
                         recordedSession?.completedTask = true
+                        recordedSession?.updatedAt = .now
                         try? modelContext.save()
                         appState.refreshPlan()
                     }
                     .buttonStyle(.borderedProminent)
                     .tint(LumaPalette.sage)
                     .disabled(displayedTask?.isCompleted != false)
+                    Button("Volver a Hoy") { appState.selection = .today }
+                    if let task = displayedTask, !task.isCompleted, task.focusedMinutes >= task.estimatedMinutes {
+                        Button("Todavía falta · sumar 25 min estimados") {
+                            task.estimatedMinutes = task.focusedMinutes + 25
+                            task.touch()
+                            do { try modelContext.save(); appState.refreshPlan() } catch { sessionSaveFailed = true }
+                        }.font(.caption)
+                    }
                 }
                 .lumaCard(padding: 14)
             }
@@ -440,14 +465,8 @@ struct FocusRoomView: View {
 
     private func tick() {
         guard isRunning else { return }
-        if remainingSeconds > 1 {
-            remainingSeconds -= 1
-            elapsedSeconds += 1
-        } else {
-            remainingSeconds = 0
-            elapsedSeconds += 1
-            completeSession(minutes: durationMinutes)
-        }
+        viewModel.checkpoint(now: .now, advance: true)
+        if remainingSeconds == 0 { completeSession(minutes: max(1, Int(ceil(Double(elapsedSeconds) / 60)))) }
     }
 
     private func reset() {
@@ -455,6 +474,7 @@ struct FocusRoomView: View {
     }
 
     private func finishSessionEarly() {
+        viewModel.checkpoint(now: .now, advance: true)
         let minutes = max(1, Int(ceil(Double(elapsedSeconds) / 60.0)))
         completeSession(minutes: minutes)
     }
@@ -462,11 +482,23 @@ struct FocusRoomView: View {
     private func completeSession(minutes: Int) {
         guard !completedSession, elapsedSeconds > 0, minutes > 0, let selectedTask else { return }
         let endedAt = Date.now
-        let eventID = UUID()
+        let eventID = viewModel.sessionID
+        sessionSaveFailed = false
         let initialAvailableMinutes = dailyContexts.first {
             Calendar.current.isDate($0.day, inSameDayAs: endedAt)
         }?.availableMinutes ?? 120
         appState.ensureDailyTimeBudget(availableMinutes: initialAvailableMinutes, now: endedAt)
+        if let existing = (try? modelContext.fetch(FetchDescriptor<FocusSession>()))?.first(where: { $0.id == eventID }) {
+            _ = appState.recordTimeSpent(eventID: eventID, minutes: existing.actualMinutes, initialAvailableMinutes: initialAvailableMinutes, now: existing.endedAt)
+            completedTaskID = existing.taskID
+            completedSession = true
+            isRunning = false
+            lastRecordedMinutes = existing.actualMinutes
+            recordedSession = existing
+            appState.finishPlannedBlock(for: existing.taskID, blockID: viewModel.plannedBlockID, workedMinutes: existing.actualMinutes, taskCompleted: existing.completedTask, now: existing.endedAt)
+            viewModel.checkpoint()
+            return
+        }
         let previousTask = LumaTaskSnapshot(task: selectedTask)
         isRunning = false
         ambientAudio.stop()
@@ -477,8 +509,9 @@ struct FocusRoomView: View {
         }
 
         var newSession: FocusSession?
-        if appState.learningEnabled {
+        do {
             let session = FocusSession(
+                id: eventID,
                 taskID: selectedTask.id,
                 taskTitle: selectedTask.title,
                 area: selectedTask.area,
@@ -487,7 +520,9 @@ struct FocusRoomView: View {
                 startedAt: sessionStartedAt ?? endedAt,
                 endedAt: endedAt,
                 energyPreference: appState.energyPreference,
-                completedTask: selectedTask.isCompleted
+                completedTask: selectedTask.isCompleted,
+                ignoredFromLearning: !appState.learningEnabled || isRest,
+                origin: isRest ? .rest : .focus
             )
             modelContext.insert(session)
             newSession = session
@@ -513,12 +548,13 @@ struct FocusRoomView: View {
             now: endedAt
         )
         if isRest { appState.finishRest(minutes: minutes) }
-        appState.finishPlannedBlock(for: selectedTask.id)
+        appState.finishPlannedBlock(for: selectedTask.id, blockID: viewModel.plannedBlockID, workedMinutes: minutes, taskCompleted: selectedTask.isCompleted, now: endedAt)
         completedTaskID = selectedTask.id
         completedSession = true
         remainingSeconds = 0
         lastRecordedMinutes = minutes
         recordedSession = newSession
+        viewModel.checkpoint()
         appState.refreshPlan()
     }
 }

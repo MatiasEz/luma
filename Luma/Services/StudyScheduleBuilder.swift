@@ -1,4 +1,5 @@
 import Foundation
+import CryptoKit
 
 struct StudyTaskDraft: Equatable, Sendable {
     var topicID: UUID?
@@ -22,12 +23,7 @@ enum StudyScheduleBuilder {
         let examDay = max(calendar.startOfDay(for: examDate), calendar.date(byAdding: .day, value: 1, to: today) ?? today)
         let lastStudyDay = calendar.date(byAdding: .day, value: -1, to: examDay) ?? examDay
         let availableDays = max(1, calendar.dateComponents([.day], from: today, to: lastStudyDay).day ?? 1)
-        let orderedTopics = topics.sorted { lhs, rhs in
-            let leftPage = lhs.sourcePages.min() ?? Int.max
-            let rightPage = rhs.sourcePages.min() ?? Int.max
-            if leftPage == rightPage { return lhs.importance > rhs.importance }
-            return leftPage < rightPage
-        }
+        let orderedTopics = topics
 
         var result = orderedTopics.enumerated().map { index, topic in
             let dayOffset = min(
@@ -44,6 +40,21 @@ enum StudyScheduleBuilder {
                 energy: topic.importance >= 3 ? .high : .medium,
                 notes: "\(guideTitle) · \(topic.pageLabel)\n\(marker)"
             )
+        }
+
+        if orderedTopics.count > 2 {
+            var interleaved: [StudyTaskDraft] = []
+            for (index, draft) in result.enumerated() {
+                interleaved.append(draft)
+                if (index + 1).isMultiple(of: 2), index + 1 < result.count {
+                    let digest = Array(SHA256.hash(data: Data("review-\(guideID)-\(draft.topicID!)".utf8)))
+                    let reviewID = UUID(uuid: (digest[0],digest[1],digest[2],digest[3],digest[4],digest[5],digest[6],digest[7],digest[8],digest[9],digest[10],digest[11],digest[12],digest[13],digest[14],digest[15]))
+                    interleaved.append(StudyTaskDraft(topicID: reviewID, title: "Repasar lo estudiado: \(orderedTopics[index].title)",
+                        deadline: draft.deadline, estimatedMinutes: 15, energy: .low,
+                        notes: "Repasar únicamente los temas anteriores, antes de seguir."))
+                }
+            }
+            result = interleaved
         }
 
         result.append(StudyTaskDraft(

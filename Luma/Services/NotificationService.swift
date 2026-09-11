@@ -19,17 +19,19 @@ struct LumaNotificationAction: Identifiable, Equatable {
 @Observable
 final class NotificationService: NSObject, UNUserNotificationCenterDelegate {
     private static let enabledKey = "lumaNotificationsEnabled"
+    private var revision = 0
+    private var budget: ReminderBudget = UserDefaults.standard.data(forKey: "lumaReminderBudget.v1").flatMap { try? JSONDecoder().decode(ReminderBudget.self, from: $0) } ?? ReminderBudget()
     private let center = UNUserNotificationCenter.current()
 
     private(set) var isAuthorized = false
     private(set) var lastError: String?
     private(set) var lastAction: LumaNotificationAction?
     var isEnabled: Bool {
-        didSet { UserDefaults.standard.set(isEnabled, forKey: Self.enabledKey) }
+        didSet { UserDefaults.standard.set(isEnabled, forKey: Self.enabledKey); if !isEnabled { clearAgendaNotifications() } }
     }
 
     override init() {
-        isEnabled = UserDefaults.standard.bool(forKey: Self.enabledKey)
+        isEnabled = !LumaDebugPreview.isEnabled && UserDefaults.standard.bool(forKey: Self.enabledKey)
         super.init()
         center.delegate = self
         registerActions()
@@ -55,8 +57,10 @@ final class NotificationService: NSObject, UNUserNotificationCenterDelegate {
     }
 
     func scheduleAgenda(_ agenda: DailyAgendaSnapshot?, tasks: [LumaTask], now: Date = .now) async {
-        center.removePendingNotificationRequests(withIdentifiers: pendingIdentifiers)
-        guard isEnabled, isAuthorized, let agenda else { return }
+        revision += 1
+        let generation = revision
+        await cancelAllPending(now: now, generation: generation)
+        guard generation == revision, isEnabled, isAuthorized, let agenda else { return }
 
         let tasksByID = Dictionary(uniqueKeysWithValues: tasks.map { ($0.id, $0) })
         let scheduler = DailyScheduler()
@@ -77,25 +81,41 @@ final class NotificationService: NSObject, UNUserNotificationCenterDelegate {
                 from: startDate
             )
             let trigger = UNCalendarNotificationTrigger(dateMatching: components, repeats: false)
+            let id = "luma-agenda-\(UUID())"
+            guard generation == revision, budget.reserve(id: id, date: startDate, now: now) else { continue }
+            persistBudget()
             let request = UNNotificationRequest(
-                identifier: "luma-agenda-\(index)",
+                identifier: id,
                 content: content,
                 trigger: trigger
             )
             do {
                 try await center.add(request)
+                if generation != revision { center.removePendingNotificationRequests(withIdentifiers: [id]) }
             } catch {
+                budget.reservations.removeValue(forKey: id)
+                persistBudget()
                 lastError = error.localizedDescription
             }
         }
     }
 
     func clearAgendaNotifications() {
-        center.removePendingNotificationRequests(withIdentifiers: pendingIdentifiers)
+        revision += 1
+        let generation = revision
+        Task { await cancelAllPending(now: .now, generation: generation) }
     }
 
-    private var pendingIdentifiers: [String] {
-        (0 ..< 3).map { "luma-agenda-\($0)" }
+    private func cancelAllPending(now: Date, generation: Int) async {
+        let requests = await center.pendingNotificationRequests()
+        guard generation == revision else { return }
+        center.removePendingNotificationRequests(withIdentifiers: requests.map(\.identifier).filter { $0.hasPrefix("luma-") })
+        budget.cancelPending(now: now)
+        persistBudget()
+    }
+
+    private func persistBudget() {
+        if let data = try? JSONEncoder().encode(budget) { UserDefaults.standard.set(data, forKey: "lumaReminderBudget.v1") }
     }
 
     private func registerActions() {
@@ -117,7 +137,7 @@ final class NotificationService: NSObject, UNUserNotificationCenterDelegate {
         case "LUMA_START", UNNotificationDefaultActionIdentifier:
             lastAction = LumaNotificationAction(kind: .start, taskID: taskID)
         case "LUMA_SNOOZE":
-            scheduleSnooze(body: body, taskID: taskID)
+            Task { await scheduleSnooze(body: body, taskID: taskID) }
             lastAction = LumaNotificationAction(kind: .snooze, taskID: taskID)
         case "LUMA_TIRED":
             lastAction = LumaNotificationAction(kind: .tired, taskID: taskID)
@@ -128,7 +148,12 @@ final class NotificationService: NSObject, UNUserNotificationCenterDelegate {
         }
     }
 
-    private func scheduleSnooze(body: String, taskID: UUID?) {
+    private func scheduleSnooze(body: String, taskID: UUID?) async {
+        guard isEnabled, isAuthorized else { return }
+        let generation = revision
+        let id = "luma-snooze-\(UUID())"
+        guard budget.reserve(id: id, date: .now.addingTimeInterval(900), now: .now) else { return }
+        persistBudget()
         let content = UNMutableNotificationContent()
         content.title = "Cuando estés lista"
         content.body = body
@@ -136,11 +161,14 @@ final class NotificationService: NSObject, UNUserNotificationCenterDelegate {
         content.categoryIdentifier = "LUMA_AGENDA"
         if let taskID { content.userInfo = ["taskID": taskID.uuidString] }
         let request = UNNotificationRequest(
-            identifier: "luma-snooze-\(UUID().uuidString)",
+            identifier: id,
             content: content,
             trigger: UNTimeIntervalNotificationTrigger(timeInterval: 15 * 60, repeats: false)
         )
-        center.add(request)
+        do {
+            try await center.add(request)
+            if generation != revision { center.removePendingNotificationRequests(withIdentifiers: [id]) }
+        } catch { budget.reservations.removeValue(forKey: id); persistBudget(); lastError = error.localizedDescription }
     }
 
     nonisolated func userNotificationCenter(

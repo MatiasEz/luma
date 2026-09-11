@@ -56,12 +56,12 @@ struct BehaviorLearningEngine {
         let monthStart = calendar.date(byAdding: .day, value: -30, to: now) ?? .distantPast
         let weekStart = calendar.date(byAdding: .day, value: -7, to: now) ?? .distantPast
         let usable = sessions.filter {
-            !$0.ignoredFromLearning && $0.endedAt >= monthStart && $0.endedAt <= now
+            !$0.ignoredFromLearning && $0.area != .rest && $0.origin != .rest && $0.actualMinutes > 0 && $0.endedAt >= monthStart && $0.endedAt <= now
         }
         let weekly = usable.filter { $0.endedAt >= weekStart }
 
         let preferredBlock = preferredBlockMinutes(from: usable)
-        let bestHour = mostFrequentHour(from: usable)
+        let bestHour = mostFrequentHour(from: usable.filter { $0.origin == .focus })
         let completedCount = usable.filter(\.completedTask).count
         let completionRate = usable.isEmpty ? 0 : Double(completedCount) / Double(usable.count)
         let measurable = usable.filter { $0.actualMinutes >= 5 && $0.plannedMinutes > 0 }

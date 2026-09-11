@@ -291,6 +291,9 @@ final class AcademicExam {
     var title: String
     var subjectID: UUID
     var date: Date
+    var preparationStartDate: Date?
+    var preparationEnabled: Bool?
+    var academicWeight: Double?
     var topicsRaw: String
     var importanceRaw: String
     var preparationMinutes: Int
@@ -320,6 +323,11 @@ final class AcademicExam {
         self.isArchived = isArchived
         self.createdAt = createdAt
         self.updatedAt = updatedAt
+    }
+
+    var shouldPrepare: Bool { preparationEnabled ?? true }
+    var preparationStart: Date {
+        preparationStartDate ?? Calendar.current.date(byAdding: .day, value: -14, to: date) ?? date
     }
 
     var topics: [String] {

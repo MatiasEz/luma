@@ -35,6 +35,8 @@ enum CloudSyncState: Equatable {
 @MainActor
 @Observable
 final class CloudSyncService {
+    private var needsAnotherSync = false
+    private var deletedKeys = Set<String>()
     private static let pendingTaskDeletionKey = "luma.cloud.pendingTaskDeletionIDs"
 
     private let client: SupabaseClient?
@@ -46,6 +48,7 @@ final class CloudSyncService {
     private(set) var lastErrorMessage: String?
 
     init(bundle: Bundle = .main) {
+        if LumaDebugPreview.isEnabled || NSClassFromString("XCTestCase") != nil { client = nil; state = .unconfigured; return }
         let rawURL = bundle.object(forInfoDictionaryKey: "LUMA_SUPABASE_URL") as? String
             ?? LumaCloudConfiguration.projectURL
         let key = bundle.object(forInfoDictionaryKey: "LUMA_SUPABASE_PUBLISHABLE_KEY") as? String
@@ -73,12 +76,16 @@ final class CloudSyncService {
     /// Keeps deletions durable while the Mac is offline so a remote copy cannot
     /// resurrect the task during the next pull.
     func queueTaskDeletion(_ taskID: UUID) {
+        if state.isBusy { needsAnotherSync = true }
+        Self.queueDeletion(table: "tasks", id: taskID)
         var pending = pendingTaskDeletionIDs
         pending.insert(taskID)
         savePendingTaskDeletionIDs(pending)
     }
 
     func cancelTaskDeletion(_ taskID: UUID) {
+        if state.isBusy { needsAnotherSync = true }
+        Self.cancelDeletion(table: "tasks", id: taskID)
         var pending = pendingTaskDeletionIDs
         pending.remove(taskID)
         savePendingTaskDeletionIDs(pending)
@@ -104,8 +111,29 @@ final class CloudSyncService {
             return
         }
         guard !state.isBusy else {
+            needsAnotherSync = true
             print("⏭️ [CLOUD-SYNC] Sincronización omitida: ya hay otra en curso")
             return
+        }
+
+        defer {
+            if needsAnotherSync {
+                needsAnotherSync = false
+                Task { @MainActor in
+                    await self.sync(
+                        tasks: (try? context.fetch(FetchDescriptor<LumaTask>())) ?? [],
+                        sessions: (try? context.fetch(FetchDescriptor<FocusSession>())) ?? [],
+                        profiles: (try? context.fetch(FetchDescriptor<LumaProfile>())) ?? [],
+                        messages: (try? context.fetch(FetchDescriptor<LumaChatRecord>())) ?? [],
+                        replans: (try? context.fetch(FetchDescriptor<LumaReplanRecord>())) ?? [],
+                        subjects: (try? context.fetch(FetchDescriptor<AcademicSubject>())) ?? [],
+                        subjectGradeItems: (try? context.fetch(FetchDescriptor<SubjectGradeItem>())) ?? [],
+                        classMeetings: (try? context.fetch(FetchDescriptor<SubjectClassMeeting>())) ?? [],
+                        routines: (try? context.fetch(FetchDescriptor<AcademicRoutine>())) ?? [],
+                        exams: (try? context.fetch(FetchDescriptor<AcademicExam>())) ?? [],
+                        dailyContexts: (try? context.fetch(FetchDescriptor<DailyPlanningContext>())) ?? [], context: context)
+                }
+            }
         }
 
         print(
@@ -204,6 +232,9 @@ final class CloudSyncService {
             self.userID = userID
             print("🔐 [CLOUD-SYNC] Usuario autenticado | id=\(userID.uuidString.prefix(8))…")
             state = .syncing
+
+            for id in pendingTaskDeletionIDs { Self.queueDeletion(table: "tasks", id: id) }
+            try await reconcileDeletions(userID: userID, client: client, context: context)
 
             try await loggedSyncStep("DELETE tareas pendientes | cantidad=\(pendingTaskDeletionIDs.count)") {
                 try await flushPendingTaskDeletions(userID: userID, client: client)
@@ -339,6 +370,61 @@ final class CloudSyncService {
         return try await client.auth.signInAnonymously().user.id
     }
 
+    static func queueDeletion(table: String, id: UUID) {
+        var keys = Set(LumaDebugPreview.defaults.stringArray(forKey: "lumaSyncDeletions.v1") ?? [])
+        keys.insert("\(table):\(id)")
+        LumaDebugPreview.defaults.set(Array(keys), forKey: "lumaSyncDeletions.v1")
+    }
+
+    static func cancelDeletion(table: String, id: UUID) {
+        let key = "\(table):\(id)"
+        var keys = Set(LumaDebugPreview.defaults.stringArray(forKey: "lumaSyncDeletions.v1") ?? [])
+        keys.remove(key)
+        LumaDebugPreview.defaults.set(Array(keys), forKey: "lumaSyncDeletions.v1")
+        var restorations = Set(LumaDebugPreview.defaults.stringArray(forKey: "lumaSyncRestorations.v1") ?? [])
+        restorations.insert(key)
+        LumaDebugPreview.defaults.set(Array(restorations), forKey: "lumaSyncRestorations.v1")
+    }
+
+    private func reconcileDeletions(userID: UUID, client: SupabaseClient, context: ModelContext) async throws {
+        let allowed: Set<String> = ["tasks", "focus_sessions", "profiles", "chat_messages", "replan_records", "academic_subjects", "subject_grade_items", "subject_class_meetings", "academic_routines", "academic_exams", "daily_planning_contexts"]
+        let restores = LumaDebugPreview.defaults.stringArray(forKey: "lumaSyncRestorations.v1") ?? []
+        for key in restores {
+            let parts = key.split(separator: ":").map(String.init)
+            guard parts.count == 2, allowed.contains(parts[0]), let id = UUID(uuidString: parts[1]) else { continue }
+            try await client.from("sync_tombstones").delete().eq("user_id", value: userID).eq("entity", value: parts[0]).eq("id", value: id).execute()
+            let remaining = (LumaDebugPreview.defaults.stringArray(forKey: "lumaSyncRestorations.v1") ?? []).filter { $0 != key }
+            LumaDebugPreview.defaults.set(remaining, forKey: "lumaSyncRestorations.v1")
+        }
+        let pending = LumaDebugPreview.defaults.stringArray(forKey: "lumaSyncDeletions.v1") ?? []
+        for key in pending {
+            let parts = key.split(separator: ":").map(String.init)
+            guard parts.count == 2, allowed.contains(parts[0]), let id = UUID(uuidString: parts[1]) else { continue }
+            let row = CloudTombstone(userID: userID, entity: parts[0], id: id)
+            try await client.from("sync_tombstones").upsert(row).execute()
+            if (LumaDebugPreview.defaults.stringArray(forKey: "lumaSyncRestorations.v1") ?? []).contains(key) { needsAnotherSync = true; continue }
+            try await client.from(parts[0]).delete().eq("user_id", value: userID).eq("id", value: id).execute()
+            let remaining = (LumaDebugPreview.defaults.stringArray(forKey: "lumaSyncDeletions.v1") ?? []).filter { $0 != key }
+            LumaDebugPreview.defaults.set(remaining, forKey: "lumaSyncDeletions.v1")
+        }
+        let remote: [CloudTombstone] = try await client.from("sync_tombstones").select().eq("user_id", value: userID).execute().value
+        let restoring = Set(LumaDebugPreview.defaults.stringArray(forKey: "lumaSyncRestorations.v1") ?? [])
+        if !restoring.isEmpty { needsAnotherSync = true }
+        deletedKeys = Set(remote.map { "\($0.entity):\($0.id)" }).subtracting(restoring)
+        for item in try context.fetch(FetchDescriptor<LumaTask>()) where deletedKeys.contains("tasks:\(item.id)") { context.delete(item) }
+        for item in try context.fetch(FetchDescriptor<FocusSession>()) where deletedKeys.contains("focus_sessions:\(item.id)") { context.delete(item) }
+        for item in try context.fetch(FetchDescriptor<LumaProfile>()) where deletedKeys.contains("profiles:\(item.id)") { context.delete(item) }
+        for item in try context.fetch(FetchDescriptor<LumaChatRecord>()) where deletedKeys.contains("chat_messages:\(item.id)") { context.delete(item) }
+        for item in try context.fetch(FetchDescriptor<LumaReplanRecord>()) where deletedKeys.contains("replan_records:\(item.id)") { context.delete(item) }
+        for item in try context.fetch(FetchDescriptor<AcademicSubject>()) where deletedKeys.contains("academic_subjects:\(item.id)") { context.delete(item) }
+        for item in try context.fetch(FetchDescriptor<SubjectGradeItem>()) where deletedKeys.contains("subject_grade_items:\(item.id)") { context.delete(item) }
+        for item in try context.fetch(FetchDescriptor<SubjectClassMeeting>()) where deletedKeys.contains("subject_class_meetings:\(item.id)") { context.delete(item) }
+        for item in try context.fetch(FetchDescriptor<AcademicRoutine>()) where deletedKeys.contains("academic_routines:\(item.id)") { context.delete(item) }
+        for item in try context.fetch(FetchDescriptor<AcademicExam>()) where deletedKeys.contains("academic_exams:\(item.id)") { context.delete(item) }
+        for item in try context.fetch(FetchDescriptor<DailyPlanningContext>()) where deletedKeys.contains("daily_planning_contexts:\(item.id)") { context.delete(item) }
+        try context.save()
+    }
+
     private var pendingTaskDeletionIDs: Set<UUID> {
         let stored = UserDefaults.standard.stringArray(forKey: Self.pendingTaskDeletionKey) ?? []
         return Set(stored.compactMap(UUID.init(uuidString:)))
@@ -378,59 +464,59 @@ final class CloudSyncService {
         exams: [AcademicExam],
         dailyContexts: [DailyPlanningContext]
     ) async throws {
-        if !tasks.isEmpty {
-            try await loggedSyncStep("PUSH tasks | cantidad=\(tasks.count)") {
-                try await client.from("tasks").upsert(tasks.map { CloudTask(local: $0, userID: userID, formatter: isoFormatter) }).execute()
-            }
-        }
-        if !sessions.isEmpty {
-            try await loggedSyncStep("PUSH focus_sessions | cantidad=\(sessions.count)") {
-                try await client.from("focus_sessions").upsert(sessions.map { CloudFocusSession(local: $0, userID: userID, formatter: isoFormatter) }).execute()
-            }
-        }
-        if !profiles.isEmpty {
+        if profiles.contains(where: { !deletedKeys.contains("profiles:\($0.id)") }) {
             try await loggedSyncStep("PUSH profiles | cantidad=\(profiles.count)") {
-                try await client.from("profiles").upsert(profiles.map { CloudProfile(local: $0, userID: userID, formatter: isoFormatter) }).execute()
+                try await client.from("profiles").upsert(profiles.filter { !deletedKeys.contains("profiles:\($0.id)") }.map { CloudProfile(local: $0, userID: userID, formatter: isoFormatter) }).execute()
             }
         }
-        if !messages.isEmpty {
-            try await loggedSyncStep("PUSH chat_messages | cantidad=\(messages.count)") {
-                try await client.from("chat_messages").upsert(messages.map { CloudChatMessage(local: $0, userID: userID, formatter: isoFormatter) }).execute()
-            }
-        }
-        if !replans.isEmpty {
-            try await loggedSyncStep("PUSH replan_records | cantidad=\(replans.count)") {
-                try await client.from("replan_records").upsert(replans.map { CloudReplanRecord(local: $0, userID: userID, formatter: isoFormatter) }).execute()
-            }
-        }
-        if !subjects.isEmpty {
+        if subjects.contains(where: { !deletedKeys.contains("academic_subjects:\($0.id)") }) {
             try await loggedSyncStep("PUSH academic_subjects | cantidad=\(subjects.count)") {
-                try await client.from("academic_subjects").upsert(subjects.map { CloudAcademicSubject(local: $0, userID: userID, formatter: isoFormatter) }).execute()
+                try await client.from("academic_subjects").upsert(subjects.filter { !deletedKeys.contains("academic_subjects:\($0.id)") }.map { CloudAcademicSubject(local: $0, userID: userID, formatter: isoFormatter) }).execute()
             }
         }
-        if !subjectGradeItems.isEmpty {
+        if subjectGradeItems.contains(where: { !deletedKeys.contains("subject_grade_items:\($0.id)") }) {
             try await loggedSyncStep("PUSH subject_grade_items | cantidad=\(subjectGradeItems.count)") {
-                try await client.from("subject_grade_items").upsert(subjectGradeItems.map { CloudSubjectGradeItem(local: $0, userID: userID, formatter: isoFormatter) }).execute()
+                try await client.from("subject_grade_items").upsert(subjectGradeItems.filter { !deletedKeys.contains("subject_grade_items:\($0.id)") }.map { CloudSubjectGradeItem(local: $0, userID: userID, formatter: isoFormatter) }).execute()
             }
         }
-        if !classMeetings.isEmpty {
+        if classMeetings.contains(where: { !deletedKeys.contains("subject_class_meetings:\($0.id)") }) {
             try await loggedSyncStep("PUSH subject_class_meetings | cantidad=\(classMeetings.count)") {
-                try await client.from("subject_class_meetings").upsert(classMeetings.map { CloudClassMeeting(local: $0, userID: userID, formatter: isoFormatter) }).execute()
+                try await client.from("subject_class_meetings").upsert(classMeetings.filter { !deletedKeys.contains("subject_class_meetings:\($0.id)") }.map { CloudClassMeeting(local: $0, userID: userID, formatter: isoFormatter) }).execute()
             }
         }
-        if !routines.isEmpty {
+        if routines.contains(where: { !deletedKeys.contains("academic_routines:\($0.id)") }) {
             try await loggedSyncStep("PUSH academic_routines | cantidad=\(routines.count)") {
-                try await client.from("academic_routines").upsert(routines.map { CloudAcademicRoutine(local: $0, userID: userID, formatter: isoFormatter) }).execute()
+                try await client.from("academic_routines").upsert(routines.filter { !deletedKeys.contains("academic_routines:\($0.id)") }.map { CloudAcademicRoutine(local: $0, userID: userID, formatter: isoFormatter) }).execute()
             }
         }
-        if !exams.isEmpty {
+        if exams.contains(where: { !deletedKeys.contains("academic_exams:\($0.id)") }) {
             try await loggedSyncStep("PUSH academic_exams | cantidad=\(exams.count)") {
-                try await client.from("academic_exams").upsert(exams.map { CloudAcademicExam(local: $0, userID: userID, formatter: isoFormatter) }).execute()
+                try await client.from("academic_exams").upsert(exams.filter { !deletedKeys.contains("academic_exams:\($0.id)") }.map { CloudAcademicExam(local: $0, userID: userID, formatter: isoFormatter) }).execute()
             }
         }
-        if !dailyContexts.isEmpty {
+        if dailyContexts.contains(where: { !deletedKeys.contains("daily_planning_contexts:\($0.id)") }) {
             try await loggedSyncStep("PUSH daily_planning_contexts | cantidad=\(dailyContexts.count)") {
-                try await client.from("daily_planning_contexts").upsert(dailyContexts.map { CloudDailyPlanningContext(local: $0, userID: userID, formatter: isoFormatter) }).execute()
+                try await client.from("daily_planning_contexts").upsert(dailyContexts.filter { !deletedKeys.contains("daily_planning_contexts:\($0.id)") }.map { CloudDailyPlanningContext(local: $0, userID: userID, formatter: isoFormatter) }).execute()
+            }
+        }
+        if tasks.contains(where: { !deletedKeys.contains("tasks:\($0.id)") }) {
+            try await loggedSyncStep("PUSH tasks | cantidad=\(tasks.count)") {
+                try await client.from("tasks").upsert(tasks.filter { !deletedKeys.contains("tasks:\($0.id)") }.map { CloudTask(local: $0, userID: userID, formatter: isoFormatter) }).execute()
+            }
+        }
+        if sessions.contains(where: { !deletedKeys.contains("focus_sessions:\($0.id)") }) {
+            try await loggedSyncStep("PUSH focus_sessions | cantidad=\(sessions.count)") {
+                try await client.from("focus_sessions").upsert(sessions.filter { !deletedKeys.contains("focus_sessions:\($0.id)") }.map { CloudFocusSession(local: $0, userID: userID, formatter: isoFormatter) }).execute()
+            }
+        }
+        if messages.contains(where: { !deletedKeys.contains("chat_messages:\($0.id)") }) {
+            try await loggedSyncStep("PUSH chat_messages | cantidad=\(messages.count)") {
+                try await client.from("chat_messages").upsert(messages.filter { !deletedKeys.contains("chat_messages:\($0.id)") }.map { CloudChatMessage(local: $0, userID: userID, formatter: isoFormatter) }).execute()
+            }
+        }
+        if replans.contains(where: { !deletedKeys.contains("replan_records:\($0.id)") }) {
+            try await loggedSyncStep("PUSH replan_records | cantidad=\(replans.count)") {
+                try await client.from("replan_records").upsert(replans.filter { !deletedKeys.contains("replan_records:\($0.id)") }.map { CloudReplanRecord(local: $0, userID: userID, formatter: isoFormatter) }).execute()
             }
         }
     }
@@ -456,7 +542,7 @@ final class CloudSyncService {
         }
         print("📥 [CLOUD-SYNC] PULL tasks | recibidos=\(remoteTasks.count)")
         let tasksByID = Dictionary(uniqueKeysWithValues: tasks.map { ($0.id, $0) })
-        for record in remoteTasks {
+        for record in remoteTasks where !deletedKeys.contains("tasks:\(record.id)") {
             if let local = tasksByID[record.id] {
                 if record.updatedDate(formatter: isoFormatter) > local.updatedAt {
                     record.apply(to: local, formatter: isoFormatter)
@@ -470,18 +556,32 @@ final class CloudSyncService {
             try await client.from("focus_sessions").select().eq("user_id", value: userID).execute().value
         }
         print("📥 [CLOUD-SYNC] PULL focus_sessions | recibidos=\(remoteSessions.count)")
-        let sessionIDs = Set(sessions.map(\.id))
-        for record in remoteSessions where !sessionIDs.contains(record.id) {
-            context.insert(record.local(formatter: isoFormatter))
+        let sessionsByID = Dictionary(uniqueKeysWithValues: sessions.map { ($0.id, $0) })
+        for record in remoteSessions where !deletedKeys.contains("focus_sessions:\(record.id)") {
+            if let local = sessionsByID[record.id] {
+                if let remoteDate = record.updatedAt.flatMap(isoFormatter.date(from:)), remoteDate > (local.updatedAt ?? local.endedAt) {
+                    local.ignoredFromLearning = record.ignoredFromLearning
+                    local.completedTask = record.completedTask
+                    local.originRaw = record.origin
+                    local.updatedAt = remoteDate
+                }
+            } else { context.insert(record.local(formatter: isoFormatter)) }
         }
 
         let remoteProfiles: [CloudProfile] = try await loggedSyncStep("PULL profiles") {
             try await client.from("profiles").select().eq("user_id", value: userID).execute().value
         }
         print("📥 [CLOUD-SYNC] PULL profiles | recibidos=\(remoteProfiles.count)")
-        let profileIDs = Set(profiles.map(\.id))
-        for record in remoteProfiles where !profileIDs.contains(record.id) {
-            context.insert(record.local(formatter: isoFormatter))
+        let profilesByID = Dictionary(uniqueKeysWithValues: profiles.map { ($0.id, $0) })
+        for record in remoteProfiles where !deletedKeys.contains("profiles:\(record.id)") {
+            if let local = profilesByID[record.id] {
+                let remote = record.local(formatter: isoFormatter)
+                if remote.updatedAt > local.updatedAt {
+                    local.selectedAreasRaw = remote.selectedAreasRaw; local.gentleWeekdaysRaw = remote.gentleWeekdaysRaw
+                    local.energyPeakRaw = remote.energyPeakRaw; local.usualStartMinuteOfDay = remote.usualStartMinuteOfDay
+                    local.usualAvailableMinutes = remote.usualAvailableMinutes; local.updatedAt = remote.updatedAt
+                }
+            } else { context.insert(record.local(formatter: isoFormatter)) }
         }
 
         let remoteMessages: [CloudChatMessage] = try await loggedSyncStep("PULL chat_messages") {
@@ -489,7 +589,7 @@ final class CloudSyncService {
         }
         print("📥 [CLOUD-SYNC] PULL chat_messages | recibidos=\(remoteMessages.count)")
         let messageIDs = Set(messages.map(\.id))
-        for record in remoteMessages where !messageIDs.contains(record.id) {
+        for record in remoteMessages where !messageIDs.contains(record.id) && !deletedKeys.contains("chat_messages:\(record.id)") {
             context.insert(record.local(formatter: isoFormatter))
         }
 
@@ -498,7 +598,7 @@ final class CloudSyncService {
         }
         print("📥 [CLOUD-SYNC] PULL replan_records | recibidos=\(remoteReplans.count)")
         let replanIDs = Set(replans.map(\.id))
-        for record in remoteReplans where !replanIDs.contains(record.id) {
+        for record in remoteReplans where !replanIDs.contains(record.id) && !deletedKeys.contains("replan_records:\(record.id)") {
             context.insert(record.local(formatter: isoFormatter))
         }
 
@@ -507,7 +607,7 @@ final class CloudSyncService {
         }
         print("📥 [CLOUD-SYNC] PULL academic_subjects | recibidos=\(remoteSubjects.count)")
         let subjectsByID = Dictionary(uniqueKeysWithValues: subjects.map { ($0.id, $0) })
-        for record in remoteSubjects {
+        for record in remoteSubjects where !deletedKeys.contains("academic_subjects:\(record.id)") {
             if let local = subjectsByID[record.id] {
                 let remoteUpdated = isoFormatter.date(from: record.updatedAt) ?? .distantPast
                 if remoteUpdated > local.updatedAt {
@@ -528,7 +628,7 @@ final class CloudSyncService {
         }
         print("📥 [CLOUD-SYNC] PULL subject_grade_items | recibidos=\(remoteGradeItems.count)")
         let itemsByID = Dictionary(uniqueKeysWithValues: subjectGradeItems.map { ($0.id, $0) })
-        for record in remoteGradeItems {
+        for record in remoteGradeItems where !deletedKeys.contains("subject_grade_items:\(record.id)") {
             if let local = itemsByID[record.id] {
                 let remoteUpdated = isoFormatter.date(from: record.updatedAt) ?? .distantPast
                 if remoteUpdated > local.updatedAt {
@@ -548,7 +648,7 @@ final class CloudSyncService {
         }
         print("📥 [CLOUD-SYNC] PULL subject_class_meetings | recibidos=\(remoteMeetings.count)")
         let meetingsByID = Dictionary(uniqueKeysWithValues: classMeetings.map { ($0.id, $0) })
-        for record in remoteMeetings {
+        for record in remoteMeetings where !deletedKeys.contains("subject_class_meetings:\(record.id)") {
             if let local = meetingsByID[record.id] { record.apply(to: local, formatter: isoFormatter) }
             else { context.insert(record.local(formatter: isoFormatter)) }
         }
@@ -558,7 +658,7 @@ final class CloudSyncService {
         }
         print("📥 [CLOUD-SYNC] PULL academic_routines | recibidos=\(remoteRoutines.count)")
         let routinesByID = Dictionary(uniqueKeysWithValues: routines.map { ($0.id, $0) })
-        for record in remoteRoutines {
+        for record in remoteRoutines where !deletedKeys.contains("academic_routines:\(record.id)") {
             if let local = routinesByID[record.id] { record.apply(to: local, formatter: isoFormatter) }
             else { context.insert(record.local(formatter: isoFormatter)) }
         }
@@ -568,7 +668,7 @@ final class CloudSyncService {
         }
         print("📥 [CLOUD-SYNC] PULL academic_exams | recibidos=\(remoteExams.count)")
         let examsByID = Dictionary(uniqueKeysWithValues: exams.map { ($0.id, $0) })
-        for record in remoteExams {
+        for record in remoteExams where !deletedKeys.contains("academic_exams:\(record.id)") {
             if let local = examsByID[record.id] { record.apply(to: local, formatter: isoFormatter) }
             else { context.insert(record.local(formatter: isoFormatter)) }
         }
@@ -578,14 +678,14 @@ final class CloudSyncService {
         }
         print("📥 [CLOUD-SYNC] PULL daily_planning_contexts | recibidos=\(remoteContexts.count)")
         let contextsByID = Dictionary(uniqueKeysWithValues: dailyContexts.map { ($0.id, $0) })
-        for record in remoteContexts {
+        for record in remoteContexts where !deletedKeys.contains("daily_planning_contexts:\(record.id)") {
             if let local = contextsByID[record.id] { record.apply(to: local, formatter: isoFormatter) }
             else { context.insert(record.local(formatter: isoFormatter)) }
         }
     }
 }
 
-private struct CloudAcademicSubject: Codable {
+struct CloudAcademicSubject: Codable {
     let id: UUID
     let userID: UUID
     let name: String
@@ -633,7 +733,7 @@ private struct CloudAcademicSubject: Codable {
     }
 }
 
-private struct CloudSubjectGradeItem: Codable {
+struct CloudSubjectGradeItem: Codable {
     let id: UUID
     let userID: UUID
     let subjectID: UUID
@@ -677,7 +777,7 @@ private struct CloudSubjectGradeItem: Codable {
     }
 }
 
-private struct CloudClassMeeting: Codable {
+struct CloudClassMeeting: Codable {
     let id: UUID
     let userID: UUID
     let subjectID: UUID
@@ -715,7 +815,7 @@ private struct CloudClassMeeting: Codable {
     }
 }
 
-private struct CloudAcademicRoutine: Codable {
+struct CloudAcademicRoutine: Codable {
     let id: UUID
     let userID: UUID
     let title: String
@@ -761,12 +861,15 @@ private struct CloudAcademicRoutine: Codable {
     }
 }
 
-private struct CloudAcademicExam: Codable {
+struct CloudAcademicExam: Codable {
     let id: UUID
     let userID: UUID
     let title: String
     let subjectID: UUID
     let date: String
+    let preparationStart: String?
+    let preparationEnabled: Bool?
+    let academicWeight: Double?
     let topicsRaw: String
     let importance: String
     let preparationMinutes: Int
@@ -776,6 +879,9 @@ private struct CloudAcademicExam: Codable {
 
     enum CodingKeys: String, CodingKey {
         case id, title, date, importance
+        case preparationStart = "preparation_start"
+        case preparationEnabled = "preparation_enabled"
+        case academicWeight = "academic_weight"
         case userID = "user_id"; case subjectID = "subject_id"; case topicsRaw = "topics_raw"
         case preparationMinutes = "preparation_minutes"; case isArchived = "is_archived"
         case createdAt = "created_at"; case updatedAt = "updated_at"
@@ -784,23 +890,33 @@ private struct CloudAcademicExam: Codable {
     init(local: AcademicExam, userID: UUID, formatter: ISO8601DateFormatter) {
         id = local.id; self.userID = userID; title = local.title; subjectID = local.subjectID
         date = formatter.string(from: local.date); topicsRaw = local.topicsRaw; importance = local.importanceRaw
+        preparationStart = local.preparationStartDate.map(formatter.string(from:))
+        preparationEnabled = local.preparationEnabled
+        academicWeight = local.academicWeight
         preparationMinutes = local.preparationMinutes; isArchived = local.isArchived
         createdAt = formatter.string(from: local.createdAt); updatedAt = formatter.string(from: local.updatedAt)
     }
 
     func local(formatter: ISO8601DateFormatter) -> AcademicExam {
-        AcademicExam(id: id, title: title, subjectID: subjectID, date: formatter.date(from: date) ?? .now, topicsRaw: topicsRaw, importance: ExamImportance(rawValue: importance) ?? .important, preparationMinutes: preparationMinutes, isArchived: isArchived, createdAt: formatter.date(from: createdAt) ?? .now, updatedAt: formatter.date(from: updatedAt) ?? .now)
+        let exam = AcademicExam(id: id, title: title, subjectID: subjectID, date: formatter.date(from: date) ?? .now, topicsRaw: topicsRaw, importance: ExamImportance(rawValue: importance) ?? .important, preparationMinutes: preparationMinutes, isArchived: isArchived, createdAt: formatter.date(from: createdAt) ?? .now, updatedAt: formatter.date(from: updatedAt) ?? .now)
+        exam.preparationStartDate = preparationStart.flatMap(formatter.date(from:))
+        exam.preparationEnabled = preparationEnabled
+        exam.academicWeight = academicWeight
+        return exam
     }
 
     func apply(to local: AcademicExam, formatter: ISO8601DateFormatter) {
         guard (formatter.date(from: updatedAt) ?? .distantPast) > local.updatedAt else { return }
+        local.preparationStartDate = preparationStart.flatMap(formatter.date(from:))
+        local.preparationEnabled = preparationEnabled
+        local.academicWeight = academicWeight
         local.title = title; local.subjectID = subjectID; local.date = formatter.date(from: date) ?? local.date
         local.topicsRaw = topicsRaw; local.importanceRaw = importance; local.preparationMinutes = preparationMinutes
         local.isArchived = isArchived; local.updatedAt = formatter.date(from: updatedAt) ?? .now
     }
 }
 
-private struct CloudDailyPlanningContext: Codable {
+struct CloudDailyPlanningContext: Codable {
     let id: UUID
     let userID: UUID
     let day: String
@@ -833,7 +949,7 @@ private struct CloudDailyPlanningContext: Codable {
     }
 }
 
-private struct CloudTask: Codable {
+struct CloudTask: Codable {
     let id: UUID
     let userID: UUID
     let title: String
@@ -862,6 +978,7 @@ private struct CloudTask: Codable {
     let sourceID: UUID?
     let sourceOccurrenceDate: String?
     let studyStage: String?
+    let planningDetails: String?
 
     enum CodingKeys: String, CodingKey {
         case id, title, area, deadline, energy, impact, status, notes
@@ -885,6 +1002,7 @@ private struct CloudTask: Codable {
         case sourceID = "source_id"
         case sourceOccurrenceDate = "source_occurrence_date"
         case studyStage = "study_stage"
+        case planningDetails = "planning_details"
     }
 
     init(local: LumaTask, userID: UUID, formatter: ISO8601DateFormatter) {
@@ -916,6 +1034,7 @@ private struct CloudTask: Codable {
         sourceID = local.sourceID
         sourceOccurrenceDate = local.sourceOccurrenceDate.map(formatter.string(from:))
         studyStage = local.studyStageRaw
+        planningDetails = local.planningDetailsRaw
     }
 
     func local(formatter: ISO8601DateFormatter) -> LumaTask {
@@ -946,7 +1065,8 @@ private struct CloudTask: Codable {
             sourceTypeRaw: sourceType,
             sourceID: sourceID,
             sourceOccurrenceDate: sourceOccurrenceDate.flatMap(formatter.date(from:)),
-            studyStageRaw: studyStage
+            studyStageRaw: studyStage,
+            planningDetailsRaw: planningDetails
         )
     }
 
@@ -980,10 +1100,13 @@ private struct CloudTask: Codable {
         local.sourceID = sourceID
         local.sourceOccurrenceDate = sourceOccurrenceDate.flatMap(formatter.date(from:))
         local.studyStageRaw = studyStage
+        local.planningDetailsRaw = planningDetails
     }
 }
 
-private struct CloudFocusSession: Codable {
+struct CloudFocusSession: Codable {
+    let origin: String?
+    let updatedAt: String?
     let id: UUID
     let userID: UUID
     let taskID: UUID
@@ -998,6 +1121,8 @@ private struct CloudFocusSession: Codable {
     let ignoredFromLearning: Bool
 
     enum CodingKeys: String, CodingKey {
+        case origin
+        case updatedAt = "updated_at"
         case id, area
         case userID = "user_id"
         case taskID = "task_id"
@@ -1012,6 +1137,8 @@ private struct CloudFocusSession: Codable {
     }
 
     init(local: FocusSession, userID: UUID, formatter: ISO8601DateFormatter) {
+        origin = local.originRaw
+        updatedAt = local.updatedAt.map(formatter.string(from:))
         id = local.id
         self.userID = userID
         taskID = local.taskID
@@ -1038,12 +1165,14 @@ private struct CloudFocusSession: Codable {
             endedAt: formatter.date(from: endedAt) ?? .now,
             energyPreference: EnergyPreference(rawValue: energyPreference) ?? .normal,
             completedTask: completedTask,
-            ignoredFromLearning: ignoredFromLearning
+            ignoredFromLearning: ignoredFromLearning,
+            origin: origin.flatMap(FocusSessionOrigin.init(rawValue:)) ?? .focus,
+            updatedAt: updatedAt.flatMap(formatter.date(from:))
         )
     }
 }
 
-private struct CloudProfile: Codable {
+struct CloudProfile: Codable {
     let id: UUID
     let userID: UUID
     let selectedAreas: String
@@ -1092,7 +1221,7 @@ private struct CloudProfile: Codable {
     }
 }
 
-private struct CloudChatMessage: Codable {
+struct CloudChatMessage: Codable {
     let id: UUID
     let userID: UUID
     let role: String
@@ -1171,7 +1300,7 @@ private struct CloudChatMessage: Codable {
     }
 }
 
-private struct CloudReplanRecord: Codable {
+struct CloudReplanRecord: Codable {
     let id: UUID
     let userID: UUID
     let createdAt: String
@@ -1236,4 +1365,11 @@ private struct CloudReplanRecord: Codable {
             changeSummaryRaw: changeSummary
         )
     }
+}
+
+struct CloudTombstone: Codable {
+    var userID: UUID
+    var entity: String
+    var id: UUID
+    enum CodingKeys: String, CodingKey { case userID = "user_id"; case entity, id }
 }

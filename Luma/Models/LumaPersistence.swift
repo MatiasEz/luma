@@ -330,12 +330,26 @@ enum ReplanProposalBuilder {
         } else {
             timeAllowanceAdjustment = afterMinutes - beforeMinutes
         }
-        let afterRecommendations = planner.recommendations(
+        var afterRecommendations = planner.recommendations(
             from: tasks,
             now: now,
             preference: proposedEnergy,
             budgetOverride: afterMinutes
         )
+        if afterMinutes > beforeMinutes, proposedEnergy == currentEnergy, currentPlan != nil {
+            let preserved = beforeRecommendations
+            let ids = Set(preserved.map(\.id))
+            let rest = currentPlan?.restMinutes ?? 0
+            var spare = max(0, afterMinutes - rest - preserved.reduce(0) { $0 + $1.suggestedMinutes })
+            var additions: [PlanRecommendation] = []
+            for candidate in afterRecommendations where !ids.contains(candidate.id) && preserved.count + additions.count < (proposedEnergy == .tired ? 2 : 3) {
+                guard spare >= 10 else { break }
+                let minutes = min(spare, candidate.suggestedMinutes)
+                additions.append(PlanRecommendation(task: candidate.task, score: candidate.score, reason: candidate.reason, suggestedMinutes: minutes))
+                spare -= minutes
+            }
+            afterRecommendations = preserved + additions
+        }
         let afterIDs = afterRecommendations.map(\.task.id)
         let afterSuggestedMinutes = Dictionary(uniqueKeysWithValues: afterRecommendations.map {
             ($0.task.id, $0.suggestedMinutes)
@@ -347,21 +361,19 @@ enum ReplanProposalBuilder {
             budgetOverride: beforeMinutes,
             savedMinutes: currentPlan?.restMinutes
         )?.suggestedMinutes ?? 0
-        let afterRestMinutes = planner.restRecommendation(
+        let proposedRestMinutes = planner.restRecommendation(
             from: tasks,
             now: now,
             preference: proposedEnergy,
             budgetOverride: afterMinutes
         )?.suggestedMinutes ?? 0
+        let afterRestMinutes = afterMinutes > beforeMinutes && proposedEnergy == currentEnergy ? beforeRestMinutes : proposedRestMinutes
         let startMinute = currentAgenda?.startMinuteOfDay ?? scheduler.defaultStartMinute(now: now)
         let beforeBlocks = currentAgenda?.blocks ?? []
-        let afterBlocks = scheduler.schedule(
-            recommendations: afterRecommendations,
-            availableMinutes: afterMinutes,
-            startMinuteOfDay: startMinute,
-            busyBlocks: busyBlocks,
-            reservedRestMinutes: afterRestMinutes
-        )
+        let windows = currentAgenda?.availabilityWindows ?? []
+        let afterBlocks = windows.isEmpty ? [] : scheduler.schedule(
+            recommendations: afterRecommendations, availabilityWindows: windows,
+            busyBlocks: busyBlocks, reservedRestMinutes: afterRestMinutes)
         let taskNames = Dictionary(uniqueKeysWithValues: tasks.map { ($0.id, $0.title) })
         let summary = changeSummary(
             beforeIDs: beforeIDs,

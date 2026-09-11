@@ -555,7 +555,7 @@ final class LocalAIEngine {
         {
           "message": "respuesta clara de máximo 100 palabras",
           "action": {
-            "type": "none|replan|start_focus|complete_task|rename_task|change_deadline|change_duration",
+            "type": "none|replan|start_focus|complete_task|rename_task|change_deadline|change_due_date|change_duration|prioritize_task|remember_preference",
             "label": "texto corto para el botón; para rename_task, el nombre nuevo exacto",
             "taskID": "UUID exacto del contexto o null",
             "energy": "normal|tired|energized o null",
@@ -576,7 +576,9 @@ final class LocalAIEngine {
         - Si la usuaria pide una sesión para una materia, elegí entre los pendientes de esa materia el más conveniente del plan y conservá exactamente la duración solicitada.
         - Si piden cambiar o corregir el nombre de una tarea, usá rename_task. No uses replan.
         - Para rename_task, label contiene únicamente el nombre nuevo exacto, sin comillas ni explicación.
-        - Si piden mover, postergar o cambiar la fecha de una tarea, usá change_deadline y date. Interpretá mañana y días de la semana desde la fecha local del contexto.
+        - Si piden programar trabajo, usá change_deadline y date. Si cambian la fecha de entrega, usá change_due_date y date. Son acciones distintas.
+        - Si piden hacer una tarea primero o cambiar prioridad, usá prioritize_task y taskID.
+        - Solo si piden explícitamente recordar una preferencia, usá remember_preference con esa preferencia en label; la usuaria la confirmará. Interpretá mañana y días de la semana desde la fecha local del contexto.
         - Si piden cambiar cuánto dura una tarea, usá change_duration y durationMinutes entre 5 y 480.
         - Para acciones sobre tareas usá exclusivamente un UUID presente en el contexto.
         - Para replan podés indicar energía y minutos disponibles cuando la usuaria los haya mencionado.
@@ -1994,6 +1996,15 @@ private struct AILumaChatActionPayload: Decodable {
                 taskID: id,
                 dateValue: parsedDate
             )
+        case "change_due_date":
+            guard let taskID, let id = UUID(uuidString: taskID), let date, let parsedDate = Self.dateFormatter.date(from: date) else { return nil }
+            return LumaChatSuggestedAction(kind: .changeDueDate, label: "Cambiar fecha de entrega", taskID: id, dateValue: parsedDate)
+        case "prioritize_task":
+            guard let taskID, let id = UUID(uuidString: taskID) else { return nil }
+            return LumaChatSuggestedAction(kind: .prioritizeTask, label: "Hacer esto primero", taskID: id)
+        case "remember_preference":
+            guard let cleanLabel, !cleanLabel.isEmpty else { return nil }
+            return LumaChatSuggestedAction(kind: .rememberPreference, label: String(cleanLabel.prefix(300)))
         case "change_duration":
             guard let taskID,
                   let id = UUID(uuidString: taskID),

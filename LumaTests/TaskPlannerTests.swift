@@ -8,7 +8,7 @@ final class TaskPlannerTests: XCTestCase {
             LumaTask(
                 title: "Tarea \(index)",
                 area: LifeArea.allCases[index % LifeArea.allCases.count],
-                deadline: Date.now.addingTimeInterval(Double(index + 1) * 86400),
+                dueDate: Date.now.addingTimeInterval(Double(index + 1) * 86400),
                 estimatedMinutes: 30,
                 energy: .medium,
                 impact: .general
@@ -24,7 +24,7 @@ final class TaskPlannerTests: XCTestCase {
         let high = LumaTask(
             title: "Trabajo profundo",
             area: .university,
-            deadline: deadline,
+            dueDate: deadline,
             estimatedMinutes: 45,
             energy: .high,
             impact: .general
@@ -32,7 +32,7 @@ final class TaskPlannerTests: XCTestCase {
         let low = LumaTask(
             title: "Ordenar papeles",
             area: .errands,
-            deadline: deadline,
+            dueDate: deadline,
             estimatedMinutes: 30,
             energy: .low,
             impact: .general
@@ -53,7 +53,7 @@ final class TaskPlannerTests: XCTestCase {
         let weighted = LumaTask(
             title: "Entrega importante",
             area: .university,
-            deadline: deadline,
+            dueDate: deadline,
             energy: .medium,
             impact: .grade,
             academicWeight: 35
@@ -61,7 +61,7 @@ final class TaskPlannerTests: XCTestCase {
         let unweighted = LumaTask(
             title: "Lectura opcional",
             area: .university,
-            deadline: deadline,
+            dueDate: deadline,
             energy: .medium,
             impact: .general
         )

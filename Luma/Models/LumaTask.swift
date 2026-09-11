@@ -59,6 +59,7 @@ final class LumaTask {
     var sourceID: UUID?
     var sourceOccurrenceDate: Date?
     var studyStageRaw: String?
+    var planningDetailsRaw: String?
 
     init(
         id: UUID = UUID(),
@@ -87,7 +88,8 @@ final class LumaTask {
         sourceTypeRaw: String? = nil,
         sourceID: UUID? = nil,
         sourceOccurrenceDate: Date? = nil,
-        studyStageRaw: String? = nil
+        studyStageRaw: String? = nil,
+        planningDetailsRaw: String? = nil
     ) {
         self.id = id
         self.title = title
@@ -116,6 +118,12 @@ final class LumaTask {
         self.sourceID = sourceID
         self.sourceOccurrenceDate = sourceOccurrenceDate
         self.studyStageRaw = studyStageRaw
+        self.planningDetailsRaw = planningDetailsRaw
+    }
+
+    var planningDetails: TaskPlanningDetails {
+        get { planningDetailsRaw.flatMap { $0.data(using: .utf8) }.flatMap { try? JSONDecoder().decode(TaskPlanningDetails.self, from: $0) } ?? TaskPlanningDetails() }
+        set { planningDetailsRaw = (try? JSONEncoder().encode(newValue)).flatMap { String(data: $0, encoding: .utf8) } }
     }
 
     var area: LifeArea {
@@ -229,6 +237,7 @@ struct LumaTaskSnapshot {
     let sourceID: UUID?
     let sourceOccurrenceDate: Date?
     let studyStageRaw: String?
+    let planningDetailsRaw: String?
 
     init(task: LumaTask) {
         id = task.id
@@ -258,6 +267,7 @@ struct LumaTaskSnapshot {
         sourceID = task.sourceID
         sourceOccurrenceDate = task.sourceOccurrenceDate
         studyStageRaw = task.studyStageRaw
+        planningDetailsRaw = task.planningDetailsRaw
     }
 
     func makeTask() -> LumaTask {
@@ -288,7 +298,8 @@ struct LumaTaskSnapshot {
             sourceTypeRaw: sourceTypeRaw,
             sourceID: sourceID,
             sourceOccurrenceDate: sourceOccurrenceDate,
-            studyStageRaw: studyStageRaw
+            studyStageRaw: studyStageRaw,
+            planningDetailsRaw: planningDetailsRaw
         )
     }
 }

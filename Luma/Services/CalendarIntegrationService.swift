@@ -28,7 +28,7 @@ final class CalendarIntegrationService {
     private static let selectedCalendarKey = "lumaSelectedCalendarIdentifier"
     private static let eventIdentifierPrefix = "lumaCalendarEventIdentifier."
     private let store = EKEventStore()
-    private let defaults = UserDefaults.standard
+    private let defaults: UserDefaults
     @ObservationIgnored private var commitmentsDay: Date?
     @ObservationIgnored private var commitmentsRefreshedAt: Date?
 
@@ -50,7 +50,8 @@ final class CalendarIntegrationService {
         }
     }
 
-    init() {
+    init(defaults: UserDefaults = .standard) {
+        self.defaults = defaults
         isEnabled = defaults.bool(forKey: Self.enabledKey)
         autoSyncTasks = defaults.object(forKey: Self.automaticTasksKey) as? Bool ?? true
         selectedCalendarIdentifier = defaults.string(forKey: Self.selectedCalendarKey)

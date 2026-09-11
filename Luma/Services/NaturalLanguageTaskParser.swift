@@ -23,10 +23,17 @@ struct NaturalLanguageTaskParser {
             estimatedMinutes: detectDuration(normalized),
             energy: detectEnergy(normalized),
             impact: detectImpact(normalized),
-            academicWeight: nil,
+            academicWeight: detectWeight(normalized),
             unlocksAnotherTask: normalized.contains("bloquea") || normalized.contains("antes de"),
             notes: input
         )
+    }
+
+    private func detectWeight(_ text: String) -> Double? {
+        guard let range = text.range(of: #"\b\d{1,3}(?:[.,]\d+)?\s*%"#, options: .regularExpression) else { return nil }
+        let number = text[range].replacingOccurrences(of: "%", with: "").replacingOccurrences(of: ",", with: ".").trimmingCharacters(in: .whitespaces)
+        guard let value = Double(number), (0...100).contains(value) else { return nil }
+        return value
     }
 
     func shouldUseAI(for draft: ParsedTaskDraft) -> Bool {
@@ -1207,11 +1214,12 @@ enum ParsedTaskValidator {
         ParsedTaskDraft(
             title: explicit.title,
             area: explicit.area == .errands ? ai.area : explicit.area,
+            dueDate: explicit.dueDate ?? ai.dueDate,
             deadline: explicit.deadline ?? ai.deadline,
             estimatedMinutes: explicit.estimatedMinutes == 30 ? ai.estimatedMinutes : explicit.estimatedMinutes,
             energy: explicit.energy == .medium ? ai.energy : explicit.energy,
             impact: explicit.impact == .general ? ai.impact : explicit.impact,
-            academicWeight: nil,
+            academicWeight: explicit.academicWeight ?? ai.academicWeight,
             academicSubjectID: explicit.academicSubjectID ?? ai.academicSubjectID,
             subjectGradeItemID: nil,
             grade: nil,

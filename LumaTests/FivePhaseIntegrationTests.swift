@@ -64,7 +64,7 @@ final class FivePhaseIntegrationTests: XCTestCase {
         decoder.dateDecodingStrategy = .iso8601
         let payload = try decoder.decode(LumaBackupPayload.self, from: document.data)
 
-        XCTAssertEqual(payload.version, 1)
+        XCTAssertEqual(payload.version, 2)
         XCTAssertEqual(payload.tasks.first?.title, task.title)
         XCTAssertEqual(payload.sessions.first?.actualMinutes, 20)
     }

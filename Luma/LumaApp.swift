@@ -9,10 +9,10 @@ struct LumaApp: App {
             || NSClassFromString("XCTestCase") != nil
     }
 
-    @State private var appState = AppState()
+    @State private var appState = AppState(defaults: LumaDebugPreview.defaults)
     @State private var aiEngine = LocalAIEngine()
     @State private var notificationService = NotificationService()
-    @State private var calendarService = CalendarIntegrationService()
+    @State private var calendarService = CalendarIntegrationService(defaults: LumaDebugPreview.defaults)
     @State private var updateService = UpdateService()
     @State private var cloudSyncService = CloudSyncService()
 
@@ -31,9 +31,13 @@ struct LumaApp: App {
             AcademicExam.self,
             DailyPlanningContext.self,
         ])
-        let configuration = SwiftData.ModelConfiguration(schema: schema, isStoredInMemoryOnly: LumaApp.isRunningTests)
+        let configuration = LumaDebugPreview.isEnabled
+            ? SwiftData.ModelConfiguration(schema: schema, url: FileManager.default.temporaryDirectory.appendingPathComponent("luma-preview-v08.store"))
+            : SwiftData.ModelConfiguration(schema: schema, isStoredInMemoryOnly: LumaApp.isRunningTests)
         do {
-            return try SwiftData.ModelContainer(for: schema, configurations: [configuration])
+            let container = try SwiftData.ModelContainer(for: schema, configurations: [configuration])
+            try LumaDebugPreview.seed(container.mainContext)
+            return container
         } catch {
             fatalError("No se pudo abrir la base local de Luma: \(error)")
         }

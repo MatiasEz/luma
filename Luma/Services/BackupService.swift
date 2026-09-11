@@ -24,13 +24,22 @@ struct LumaBackupDocument: FileDocument {
 }
 
 struct LumaBackupPayload: Codable {
-    var version = 1
+    var version = 2
     var exportedAt = Date.now
     var tasks: [TaskRecord]
     var sessions: [SessionRecord]
     var studyGuides: [StudyGuideRecord]? = nil
     var subjects: [SubjectRecord]? = nil
     var subjectGradeItems: [SubjectGradeItemRecord]? = nil
+
+    var classes: [CloudClassMeeting]? = nil
+    var routines: [CloudAcademicRoutine]? = nil
+    var exams: [CloudAcademicExam]? = nil
+    var contexts: [CloudDailyPlanningContext]? = nil
+    var profiles: [CloudProfile]? = nil
+    var messages: [CloudChatMessage]? = nil
+    var replans: [CloudReplanRecord]? = nil
+    var preferences: [String: Data]? = nil
 
     struct TaskRecord: Codable {
         var id: UUID
@@ -56,9 +65,16 @@ struct LumaBackupPayload: Codable {
         var focusedMinutes: Int
         var focusSessionCount: Int
         var lastFocusedAt: Date?
+        var sourceTypeRaw: String? = nil
+        var sourceID: UUID? = nil
+        var sourceOccurrenceDate: Date? = nil
+        var studyStageRaw: String? = nil
+        var planningDetailsRaw: String? = nil
     }
 
     struct SessionRecord: Codable {
+        var originRaw: String? = nil
+        var updatedAt: Date? = nil
         var id: UUID
         var taskID: UUID
         var taskTitle: String
@@ -90,6 +106,8 @@ struct LumaBackupPayload: Codable {
     }
 
     struct SubjectRecord: Codable {
+        var colorHex: String? = nil
+        var syllabusRaw: String? = nil
         var id: UUID
         var name: String
         var targetGrade: Double?
@@ -111,14 +129,64 @@ struct LumaBackupPayload: Codable {
 
 @MainActor
 enum BackupService {
+    static let portablePreferenceKeys: Set<String> = [
+        "lumaDailyPlanSnapshot", "lumaDailyAgendaSnapshot", "lumaDailyTimeBudget.v1", "lumaSharedPlan.v1",
+        "lumaWeeklyAvailability", "lumaLearningEnabled", "lumaPreferredBlockOverride", "lumaOnboardingCompleted",
+        "lumaRememberedPreferences.v1", "lumaActiveFocus.v1", "lumaFocusRainAmbience", "lumaFocusRainVolume", "lumaFocusRainEnabled"
+    ]
+
+    static func preferences(defaults: UserDefaults = .standard) -> [String: Data] {
+        portablePreferenceKeys.reduce(into: [:]) { result, key in
+            if let value = defaults.object(forKey: key),
+               let data = try? PropertyListSerialization.data(fromPropertyList: ["value": value], format: .binary, options: 0) { result[key] = data }
+        }
+    }
+
+    static func restorePreferences(_ preferences: [String: Data], defaults: UserDefaults = .standard) throws {
+        var decoded: [String: Any] = [:]
+        for (key, data) in preferences where portablePreferenceKeys.contains(key) {
+            guard let plist = try PropertyListSerialization.propertyList(from: data, format: nil) as? [String: Any], let value = plist["value"] else { throw CocoaError(.fileReadCorruptFile) }
+            decoded[key] = value
+        }
+        for (key, value) in decoded { defaults.set(value, forKey: key) }
+    }
+
+    static func preview(data: Data) throws -> LumaBackupPayload {
+        guard data.count <= 100 * 1024 * 1024 else { throw CocoaError(.fileReadTooLarge) }
+        let decoder = JSONDecoder(); decoder.dateDecodingStrategy = .iso8601
+        let payload = try decoder.decode(LumaBackupPayload.self, from: data)
+        try validate(payload)
+        return payload
+    }
+
+    private static func validate(_ payload: LumaBackupPayload) throws {
+        guard (1...2).contains(payload.version),
+              Set(payload.tasks.map(\.id)).count == payload.tasks.count,
+              Set(payload.sessions.map(\.id)).count == payload.sessions.count,
+              payload.tasks.allSatisfy({ $0.estimatedMinutes > 0 && $0.estimatedMinutes <= 100_000 && $0.focusedMinutes >= 0 }),
+              payload.sessions.allSatisfy({ $0.actualMinutes >= 0 && $0.actualMinutes <= 1440 }) else { throw CocoaError(.fileReadCorruptFile) }
+        let identityGroups: [[UUID]] = [payload.studyGuides?.map(\.id) ?? [], payload.subjects?.map(\.id) ?? [],
+            payload.subjectGradeItems?.map(\.id) ?? [], payload.classes?.map(\.id) ?? [], payload.routines?.map(\.id) ?? [],
+            payload.exams?.map(\.id) ?? [], payload.contexts?.map(\.id) ?? [], payload.profiles?.map(\.id) ?? [],
+            payload.messages?.map(\.id) ?? [], payload.replans?.map(\.id) ?? []]
+        guard identityGroups.allSatisfy({ Set($0).count == $0.count }) else { throw CocoaError(.fileReadCorruptFile) }
+        for (key, data) in payload.preferences ?? [:] where portablePreferenceKeys.contains(key) {
+            guard (try PropertyListSerialization.propertyList(from: data, format: nil) as? [String: Any])?["value"] != nil else { throw CocoaError(.fileReadCorruptFile) }
+        }
+    }
+
     static func document(
         tasks: [LumaTask],
         sessions: [FocusSession],
         studyGuides: [StudyGuide] = [],
         subjects: [AcademicSubject] = [],
-        subjectGradeItems: [SubjectGradeItem] = []
+        subjectGradeItems: [SubjectGradeItem] = [],
+        classMeetings: [SubjectClassMeeting] = [], routines: [AcademicRoutine] = [],
+        exams: [AcademicExam] = [], dailyContexts: [DailyPlanningContext] = [],
+        profiles: [LumaProfile] = [], messages: [LumaChatRecord] = [], replans: [LumaReplanRecord] = [],
+        preferences: [String: Data] = [:]
     ) throws -> LumaBackupDocument {
-        let payload = LumaBackupPayload(
+        var payload = LumaBackupPayload(
             tasks: tasks.map {
                 .init(
                     id: $0.id,
@@ -143,11 +211,14 @@ enum BackupService {
                     notes: $0.notes,
                     focusedMinutes: $0.focusedMinutes,
                     focusSessionCount: $0.focusSessionCount,
-                    lastFocusedAt: $0.lastFocusedAt
+                    lastFocusedAt: $0.lastFocusedAt,
+                    sourceTypeRaw: $0.sourceTypeRaw, sourceID: $0.sourceID, sourceOccurrenceDate: $0.sourceOccurrenceDate,
+                    studyStageRaw: $0.studyStageRaw, planningDetailsRaw: $0.planningDetailsRaw
                 )
             },
             sessions: sessions.map {
                 .init(
+                    originRaw: $0.originRaw, updatedAt: $0.updatedAt,
                     id: $0.id,
                     taskID: $0.taskID,
                     taskTitle: $0.taskTitle,
@@ -181,6 +252,7 @@ enum BackupService {
             },
             subjects: subjects.map {
                 .init(
+                    colorHex: $0.colorHex, syllabusRaw: $0.syllabusRaw,
                     id: $0.id,
                     name: $0.name,
                     targetGrade: $0.targetGrade,
@@ -201,6 +273,18 @@ enum BackupService {
                 )
             }
         )
+        // Reuse complete, typed entity records with a neutral owner, never an auth token.
+        let owner = UUID(uuidString: "00000000-0000-0000-0000-000000000000")!
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        payload.classes = classMeetings.map { CloudClassMeeting(local: $0, userID: owner, formatter: formatter) }
+        payload.routines = routines.map { CloudAcademicRoutine(local: $0, userID: owner, formatter: formatter) }
+        payload.exams = exams.map { CloudAcademicExam(local: $0, userID: owner, formatter: formatter) }
+        payload.contexts = dailyContexts.map { CloudDailyPlanningContext(local: $0, userID: owner, formatter: formatter) }
+        payload.profiles = profiles.map { CloudProfile(local: $0, userID: owner, formatter: formatter) }
+        payload.messages = messages.map { CloudChatMessage(local: $0, userID: owner, formatter: formatter) }
+        payload.replans = replans.map { CloudReplanRecord(local: $0, userID: owner, formatter: formatter) }
+        payload.preferences = preferences.filter { portablePreferenceKeys.contains($0.key) }
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
         encoder.dateEncodingStrategy = .iso8601
@@ -220,8 +304,11 @@ enum BackupService {
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
         let payload = try decoder.decode(LumaBackupPayload.self, from: data)
-        guard payload.version == 1 else { throw CocoaError(.fileReadUnsupportedScheme) }
+        guard (1...2).contains(payload.version) else { throw CocoaError(.fileReadUnsupportedScheme) }
 
+        try validate(payload)
+        let context = ModelContext(context.container)
+        context.autosaveEnabled = false
         let taskIDs = Set(existingTasks.map(\.id))
         let sessionIDs = Set(existingSessions.map(\.id))
         let studyGuideIDs = Set(existingStudyGuides.map(\.id))
@@ -257,7 +344,9 @@ enum BackupService {
                 notes: record.notes,
                 focusedMinutes: record.focusedMinutes,
                 focusSessionCount: record.focusSessionCount,
-                lastFocusedAt: record.lastFocusedAt
+                lastFocusedAt: record.lastFocusedAt,
+                sourceTypeRaw: record.sourceTypeRaw, sourceID: record.sourceID, sourceOccurrenceDate: record.sourceOccurrenceDate,
+                studyStageRaw: record.studyStageRaw, planningDetailsRaw: record.planningDetailsRaw
             ))
             restoredTasks += 1
         }
@@ -274,7 +363,9 @@ enum BackupService {
                 endedAt: record.endedAt,
                 energyPreference: EnergyPreference(rawValue: record.energyPreferenceRaw) ?? .normal,
                 completedTask: record.completedTask,
-                ignoredFromLearning: record.ignoredFromLearning
+                ignoredFromLearning: record.ignoredFromLearning,
+                origin: record.originRaw.flatMap(FocusSessionOrigin.init(rawValue:)) ?? .focus,
+                updatedAt: record.updatedAt
             ))
             restoredSessions += 1
         }
@@ -304,6 +395,7 @@ enum BackupService {
                 id: record.id,
                 name: record.name,
                 targetGrade: record.targetGrade,
+                colorHex: record.colorHex ?? "#7779A8", syllabusRaw: record.syllabusRaw ?? "",
                 createdAt: record.createdAt,
                 updatedAt: record.updatedAt,
                 isArchived: record.isArchived
@@ -325,6 +417,22 @@ enum BackupService {
             ))
             restoredSubjectGradeItems += 1
         }
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        let classesIDs = Set(try context.fetch(FetchDescriptor<SubjectClassMeeting>()).map(\.id))
+        for record in payload.classes ?? [] where !classesIDs.contains(record.id) { context.insert(record.local(formatter: formatter)) }
+        let routinesIDs = Set(try context.fetch(FetchDescriptor<AcademicRoutine>()).map(\.id))
+        for record in payload.routines ?? [] where !routinesIDs.contains(record.id) { context.insert(record.local(formatter: formatter)) }
+        let examsIDs = Set(try context.fetch(FetchDescriptor<AcademicExam>()).map(\.id))
+        for record in payload.exams ?? [] where !examsIDs.contains(record.id) { context.insert(record.local(formatter: formatter)) }
+        let contextsIDs = Set(try context.fetch(FetchDescriptor<DailyPlanningContext>()).map(\.id))
+        for record in payload.contexts ?? [] where !contextsIDs.contains(record.id) { context.insert(record.local(formatter: formatter)) }
+        let profilesIDs = Set(try context.fetch(FetchDescriptor<LumaProfile>()).map(\.id))
+        for record in payload.profiles ?? [] where !profilesIDs.contains(record.id) { context.insert(record.local(formatter: formatter)) }
+        let messagesIDs = Set(try context.fetch(FetchDescriptor<LumaChatRecord>()).map(\.id))
+        for record in payload.messages ?? [] where !messagesIDs.contains(record.id) { context.insert(record.local(formatter: formatter)) }
+        let replansIDs = Set(try context.fetch(FetchDescriptor<LumaReplanRecord>()).map(\.id))
+        for record in payload.replans ?? [] where !replansIDs.contains(record.id) { context.insert(record.local(formatter: formatter)) }
         try context.save()
         return (
             restoredTasks,

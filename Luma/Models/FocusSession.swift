@@ -1,6 +1,8 @@
 import Foundation
 import SwiftData
 
+enum FocusSessionOrigin: String, Codable { case focus, manual, rest }
+
 @Model
 final class FocusSession {
     @Attribute(.unique) var id: UUID
@@ -14,6 +16,8 @@ final class FocusSession {
     var energyPreferenceRaw: String
     var completedTask: Bool
     var ignoredFromLearning: Bool
+    var originRaw: String?
+    var updatedAt: Date?
 
     init(
         id: UUID = UUID(),
@@ -26,7 +30,9 @@ final class FocusSession {
         endedAt: Date = .now,
         energyPreference: EnergyPreference,
         completedTask: Bool = false,
-        ignoredFromLearning: Bool = false
+        ignoredFromLearning: Bool = false,
+        origin: FocusSessionOrigin = .focus,
+        updatedAt: Date? = nil
     ) {
         self.id = id
         self.taskID = taskID
@@ -39,7 +45,11 @@ final class FocusSession {
         energyPreferenceRaw = energyPreference.rawValue
         self.completedTask = completedTask
         self.ignoredFromLearning = ignoredFromLearning
+        originRaw = origin.rawValue
+        self.updatedAt = updatedAt ?? endedAt
     }
+
+    var origin: FocusSessionOrigin { originRaw.flatMap(FocusSessionOrigin.init(rawValue:)) ?? (area == .rest ? .rest : .focus) }
 
     var area: LifeArea {
         get { LifeArea(rawValue: areaRaw) ?? .errands }

@@ -14,13 +14,17 @@ struct WeekView: View {
     @Query(sort: \AcademicSubject.name) private var subjects: [AcademicSubject]
     @Query(sort: \SubjectClassMeeting.startMinuteOfDay) private var classMeetings: [SubjectClassMeeting]
     @Query(sort: \AcademicExam.date) private var exams: [AcademicExam]
+    @Query(sort: \DailyPlanningContext.day) private var dailyContexts: [DailyPlanningContext]
     @State private var viewModel = WeekViewModel()
     @State private var selectedTimelineTaskGroup: TimelineTaskGroupSelection?
     @State private var selectedMonthDay: MonthDaySelection?
     @State private var newTaskMonthDay: MonthDaySelection?
+    @State private var newExamDay: MonthDaySelection?
+    @State private var selectedWorkBlock: PlannedWorkBlock?
+    @State private var availabilityPresented = false
 
     // La bandeja de tareas sin fecha queda implementada, pero oculta temporalmente.
-    private let showsUndatedTaskTray = false
+    private let showsUndatedTaskTray = true
 
     private let calendar: Calendar = {
         var calendar = Calendar.current
@@ -42,6 +46,11 @@ struct WeekView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 22) {
                     calendarHeader
+                    HStack {
+                        Button { newExamDay = MonthDaySelection(day: viewModel.referenceDate) } label: { Label("Agregar examen", systemImage: "graduationcap") }
+                        Button("Definir horarios de hoy") { availabilityPresented = true }
+                        Spacer()
+                    }.tint(LumaPalette.indigo)
 
                     if !viewModel.scheduleFeedback.isEmpty {
                         Label(viewModel.scheduleFeedback, systemImage: "calendar.badge.checkmark")
@@ -52,6 +61,9 @@ struct WeekView: View {
                             .background(LumaPalette.sage.opacity(0.09), in: Capsule())
                     }
 
+                    if viewModel.span == .week {
+                        SharedWeekPlanView(days: days, tasks: tasks) { task, block in selectedWorkBlock = block; viewModel.selectedTask = task }
+                    }
                     calendarGrid(availableHeight: viewport.size.height)
                     if showsUndatedTaskTray {
                         tasksWithoutDate
@@ -63,6 +75,15 @@ struct WeekView: View {
             .lumaScrollSurface()
         }
         .navigationTitle("Calendario")
+        .sheet(isPresented: $availabilityPresented) { AgendaSettingsView().frame(width: 700, height: 680) }
+        .task(id: tasks.map { "\($0.id):\($0.updatedAt)" }.joined() + "\(appState.planRevision)") {
+            calendarService.refreshCommitments()
+            let planner = TaskPlanner(availableMinutes: appState.remainingAvailableMinutes(fallback: appState.availability().availableMinutes),
+                classMeetings: classMeetings, subjectNames: Dictionary(uniqueKeysWithValues: subjects.map { ($0.id, $0.name) }),
+                weeklyAvailability: appState.weeklyAvailability, restCounts: dailyContexts.first { Calendar.current.isDateInToday($0.day) }?.restCounts ?? true)
+            _ = appState.prepareDailyPlan(from: tasks, planner: planner)
+            appState.refreshSharedPlan(tasks: tasks, planner: planner, busyBlocks: calendarService.busyBlocks())
+        }
         .sheet(isPresented: Binding(
             get: { viewModel.isTimePickerPresented },
             set: { isPresented in
@@ -86,7 +107,7 @@ struct WeekView: View {
                     onEdit: { openEditor(for: task) },
                     onStart: {
                         viewModel.selectedTask = nil
-                        appState.startFocus(for: task.id)
+                        appState.startFocus(for: task.id, durationMinutes: selectedWorkBlock?.taskID == task.id ? selectedWorkBlock?.minutes : nil, plannedBlockID: selectedWorkBlock?.taskID == task.id ? selectedWorkBlock?.id : nil)
                     },
                     onToggleCompletion: { toggleCompletion(task) }
                 )
@@ -115,6 +136,17 @@ struct WeekView: View {
         }
         .sheet(item: $selectedMonthDay) { selection in
             monthDayItemsSheet(selection.day)
+        }
+        .sheet(item: $newExamDay) { selection in
+            ExamEditorView(exam: nil, initialDate: selection.day) { exam, topics, fileName in
+                modelContext.insert(exam)
+                if exam.shouldPrepare {
+                    AcademicPlanningService().materializeGeneratedExamStudy(exam: exam, topics: topics, sourceFileName: fileName, tasks: tasks, in: modelContext)
+                    AcademicPlanningService().materialize(routines: [], exams: [exam], tasks: tasks, dailyContext: nil, in: modelContext, saveChanges: false)
+                }
+                try modelContext.save()
+                appState.refreshPlan()
+            }
         }
         .sheet(item: $newTaskMonthDay) { selection in
             QuickCaptureView(scheduledDate: defaultTaskDate(on: selection.day))
@@ -300,7 +332,7 @@ struct WeekView: View {
             ForEach(days, id: \.self) { day in
                 let isToday = calendar.isDateInToday(day)
                 VStack(spacing: 4) {
-                    Text(day.formatted(.dateTime.weekday(.abbreviated)).uppercased())
+                    Text(day.formatted(.dateTime.weekday(.abbreviated).locale(Locale(identifier: "es_AR"))).uppercased())
                         .font(.caption2.weight(.bold))
                         .tracking(0.7)
                         .foregroundStyle(isToday ? LumaPalette.indigo : LumaPalette.secondaryInk)
@@ -512,8 +544,8 @@ struct WeekView: View {
                     HStack(spacing: 4) {
                         Image(systemName: task.isCompleted ? "checkmark.circle.fill" : taskCalendarSymbol(task))
                             .font(.caption2)
-                        if height >= 43, let deadline = task.deadline {
-                            Text(taskTimeLabel(deadline))
+                        if height >= 43 {
+                            Text(String(format: "%02d:%02d · %d min", entry.startMinute / 60, entry.startMinute % 60, entry.endMinute - entry.startMinute))
                                 .font(.caption2.weight(.bold).monospacedDigit())
                         }
                     }
@@ -679,6 +711,7 @@ struct WeekView: View {
     private func untimedTasks(on day: Date) -> [LumaTask] {
         viewModel.tasks(on: day, from: tasks, calendar: calendar)
             .filter { task in
+                if task.dueDate.map({ calendar.isDate($0, inSameDayAs: day) }) == true { return true }
                 guard let deadline = task.deadline else { return false }
                 return isUntimedDeadline(deadline)
             }
@@ -694,11 +727,16 @@ struct WeekView: View {
     }
 
     private func timelineEntries(on day: Date) -> [WeekTimelineEntry] {
+        let timed = appState.workBlocks(on: day).filter { $0.startMinute != nil }
+        let sharedEntries = timed.compactMap { block -> WeekTimelineEntry? in
+            guard let task = tasks.first(where: { $0.id == block.taskID }), let start = block.startMinute else { return nil }
+            return WeekTimelineEntry(id: "block-\(block.id)", startMinute: start, endMinute: start + block.minutes, content: .task(task))
+        }
         let taskEntries = viewModel.tasks(on: day, from: tasks, calendar: calendar).compactMap { task -> WeekTimelineEntry? in
-            guard let deadline = task.deadline, !isUntimedDeadline(deadline) else { return nil }
+            guard !timed.contains(where: { $0.taskID == task.id }), let deadline = task.deadline, calendar.isDate(deadline, inSameDayAs: day), !isUntimedDeadline(deadline) else { return nil }
             let start = calendar.component(.hour, from: deadline) * 60
                 + calendar.component(.minute, from: deadline)
-            let end = min(24 * 60, start + max(20, task.estimatedMinutes))
+            let end = min(24 * 60, start + (appState.workBlocks(on: day, taskID: task.id).first(where: { $0.status != .completed })?.minutes ?? min(45, task.remainingEstimatedMinutes)))
             return WeekTimelineEntry(
                 id: "task-\(task.id.uuidString)",
                 startMinute: start,
@@ -720,7 +758,7 @@ struct WeekView: View {
             )
         }
 
-        return (meetingEntries + taskEntries).sorted {
+        return (meetingEntries + taskEntries + sharedEntries).sorted {
             if $0.startMinute != $1.startMinute { return $0.startMinute < $1.startMinute }
             if $0.endMinute != $1.endMinute { return $0.endMinute < $1.endMinute }
             return $0.id < $1.id
@@ -1316,7 +1354,7 @@ struct WeekView: View {
                     case let .exam(occurrence):
                         calendarExamChip(occurrence, compact: viewModel.span == .month)
                     case let .task(task):
-                        calendarTaskChip(task, compact: viewModel.span == .month)
+                        calendarTaskChip(task, compact: viewModel.span == .month, day: day)
                     case let .classMeeting(occurrence):
                         calendarClassChip(occurrence, compact: viewModel.span == .month)
                     }
@@ -1414,22 +1452,24 @@ struct WeekView: View {
     }
 
     @ViewBuilder
-    private func calendarTaskChip(_ task: LumaTask, compact: Bool) -> some View {
+    private func calendarTaskChip(_ task: LumaTask, compact: Bool, day: Date) -> some View {
         if compact {
-            compactCalendarTaskChip(task)
+            compactCalendarTaskChip(task, day: day)
         } else {
-            expandedCalendarTaskChip(task)
+            expandedCalendarTaskChip(task, day: day)
         }
     }
 
-    private func compactCalendarTaskChip(_ task: LumaTask) -> some View {
+    private func compactCalendarTaskChip(_ task: LumaTask, day: Date) -> some View {
         let accent = taskCalendarAccent(task)
 
         return Button {
             viewModel.selectedTask = task
         } label: {
             HStack(spacing: 5) {
-                if let deadline = task.deadline {
+                if task.dueDate.map({ calendar.isDate($0, inSameDayAs: day) }) == true {
+                    Text("Entrega").font(.caption2.weight(.semibold)).foregroundStyle(LumaPalette.terracotta)
+                } else if let deadline = task.deadline {
                     Text(taskTimeLabel(deadline))
                         .font(.system(size: 10, weight: .bold, design: .rounded).monospacedDigit())
                         .foregroundStyle(accent)
@@ -1475,7 +1515,7 @@ struct WeekView: View {
         .help(task.title)
     }
 
-    private func expandedCalendarTaskChip(_ task: LumaTask) -> some View {
+    private func expandedCalendarTaskChip(_ task: LumaTask, day: Date) -> some View {
         let accent = taskCalendarAccent(task)
 
         return Button {
@@ -1483,7 +1523,9 @@ struct WeekView: View {
         } label: {
             VStack(alignment: .leading, spacing: 6) {
                 HStack(spacing: 6) {
-                    if let deadline = task.deadline {
+                    if task.dueDate.map({ calendar.isDate($0, inSameDayAs: day) }) == true {
+                    Text("Entrega").font(.caption2.weight(.semibold)).foregroundStyle(LumaPalette.terracotta)
+                } else if let deadline = task.deadline {
                         Text(taskTimeLabel(deadline))
                             .font(.caption2.weight(.bold).monospacedDigit())
                             .foregroundStyle(accent)
@@ -1505,7 +1547,7 @@ struct WeekView: View {
                     .lineLimit(2)
                     .fixedSize(horizontal: false, vertical: true)
 
-                Text(task.isCompleted ? "Completada · \(task.estimatedMinutes) min" : "\(task.estimatedMinutes) min")
+                Text(task.isCompleted ? "Completada" : task.dueDate.map({ calendar.isDate($0, inSameDayAs: day) }) == true ? "Fecha límite" : "Bloque de \(appState.workBlocks(on: day, taskID: task.id).first?.minutes ?? min(45, task.remainingEstimatedMinutes)) min")
                     .font(.caption2.weight(.medium))
                     .foregroundStyle(task.isCompleted ? LumaPalette.sage : LumaPalette.secondaryInk)
             }

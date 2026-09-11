@@ -8,6 +8,7 @@ struct DailyPlanSnapshot: Codable, Equatable {
     var inputFingerprint: String? = nil
     var suggestedMinutesByTaskID: [UUID: Int]? = nil
     var restMinutes: Int? = nil
+    var allowExtraSessions: Bool? = nil
 }
 
 /// Time is spent by a recorded action, never by reserving or reshuffling a block.
@@ -65,6 +66,7 @@ enum NavigationItem: String, CaseIterable, Identifiable {
 @MainActor
 @Observable
 final class AppState {
+    private static let sharedPlanKey = "lumaSharedPlan.v1"
     private static let dailyPlanKey = "lumaDailyPlanSnapshot"
     private static let dailyAgendaKey = "lumaDailyAgendaSnapshot"
     private static let learningEnabledKey = "lumaLearningEnabled"
@@ -80,6 +82,8 @@ final class AppState {
     @ObservationIgnored private var dashboardPreparationDay: Date?
     @ObservationIgnored private var dashboardPreparationFingerprint: String?
     @ObservationIgnored private var pendingDailyPlanFingerprintAdoption = false
+    @ObservationIgnored private var sharedBusyDay: Date?
+    @ObservationIgnored private var sharedBusyBlocks: [BusyTimeBlock] = []
 
     var selection: NavigationItem? = .today
     var energyPreference: EnergyPreference = .normal
@@ -89,6 +93,7 @@ final class AppState {
     var pendingReplanProposal: ReplanProposal?
     var pendingReplanCoachMessage = ""
     var planRevision = 0
+    private(set) var focusSession: FocusRoomViewModel
     var focusTaskID: UUID?
     var focusDurationMinutes: Int?
     var undoMessage: String?
@@ -117,7 +122,9 @@ final class AppState {
         }
     }
 
+    var rememberedPreferences: [String] = [] { didSet { defaults.set(rememberedPreferences, forKey: "lumaRememberedPreferences.v1") } }
     var coachMessage = "Tranqui. No necesitamos resolver todo hoy; empecemos por tres avances que realmente mueven la semana."
+    private(set) var sharedPlan = SharedPlanSnapshot()
     private(set) var dailyPlan: DailyPlanSnapshot?
     private(set) var dailyAgenda: DailyAgendaSnapshot?
     private(set) var dailyTimeBudget: DailyTimeBudgetSnapshot?
@@ -127,8 +134,11 @@ final class AppState {
         calendar: Calendar = .current,
         now: Date = .now
     ) {
+        focusSession = FocusRoomViewModel(defaults: defaults, now: now)
         self.defaults = defaults
         self.calendar = calendar
+        rememberedPreferences = defaults.stringArray(forKey: "lumaRememberedPreferences.v1") ?? []
+        if let data = defaults.data(forKey: Self.sharedPlanKey), let saved = try? JSONDecoder().decode(SharedPlanSnapshot.self, from: data) { sharedPlan = saved }
         if let data = defaults.data(forKey: Self.dailyTimeBudgetKey),
            let saved = try? JSONDecoder().decode(DailyTimeBudgetSnapshot.self, from: data),
            saved.allocatedMinutes >= 0,
@@ -164,6 +174,91 @@ final class AppState {
         }
     }
 
+    func reloadPortablePreferences(now: Date = .now) {
+        let recovered = AppState(defaults: defaults, calendar: calendar, now: now)
+        dailyPlan = recovered.dailyPlan; dailyAgenda = recovered.dailyAgenda; dailyTimeBudget = recovered.dailyTimeBudget
+        sharedPlan = recovered.sharedPlan; weeklyAvailability = recovered.weeklyAvailability
+        learningEnabled = recovered.learningEnabled; preferredBlockOverrideMinutes = recovered.preferredBlockOverrideMinutes
+        onboardingCompleted = recovered.onboardingCompleted; focusSession = recovered.focusSession
+        energyPreference = recovered.energyPreference
+        rememberedPreferences = recovered.rememberedPreferences
+        refreshPlan()
+    }
+
+    func restoreSharedPlan(_ snapshot: SharedPlanSnapshot) { sharedPlan = snapshot; persistSharedPlan(); refreshPlan() }
+
+    @discardableResult
+    func prioritize(_ task: LumaTask, replacing replacedID: UUID? = nil, tasks: [LumaTask], planner: TaskPlanner, now: Date = .now) -> Bool {
+        let recommendation = planner.recommendationsPreservingPlan(from: tasks, taskIDs: [task.id], now: now,
+            preference: energyPreference, budgetOverride: remainingAvailableMinutes(now: now)).first
+        guard let recommendation else { coachMessage = "Ese pendiente todavía necesita un paso previo o no entra con tu disponibilidad actual."; return false }
+        let previous = dailyPlan
+        let previousShared = sharedPlan
+        var ids = dailyPlan?.taskIDs ?? []
+        let replaced = replacedID ?? (ids.count >= (energyPreference == .tired ? 2 : 3) ? ids.last : nil)
+        var durations = dailyPlan?.suggestedMinutesByTaskID ?? [:]
+        let freed = replaced.flatMap { durations[$0] } ?? 0
+        if let replaced, replaced != task.id { ids.removeAll { $0 == replaced }; durations.removeValue(forKey: replaced) }
+        ids.removeAll { $0 == task.id }
+        let otherMinutes = ids.reduce(0) { $0 + durations[$1, default: 0] }
+        let available = max(0, remainingAvailableMinutes(now: now) - (dailyPlan?.restMinutes ?? 0) - otherMinutes)
+        let minutes = min(available, durations[task.id] ?? (freed > 0 ? min(freed, recommendation.suggestedMinutes) : recommendation.suggestedMinutes))
+        guard minutes > 0 else { coachMessage = "No queda tiempo libre. Elegí qué prioridad querés reemplazar."; return false }
+        ids.insert(task.id, at: 0); durations[task.id] = minutes
+        savePlan(day: calendar.startOfDay(for: now), taskIDs: ids, preference: energyPreference, suggestedMinutesByTaskID: durations)
+        refreshSharedPlan(tasks: tasks, planner: planner, now: now)
+        registerUndo(message: "Prioridad cambiada") { self.restoreDailyPlan(previous); self.restoreSharedPlan(previousShared) }
+        coachMessage = "Primero vamos con \(task.title). El resto del día conserva su lugar."
+        refreshPlan()
+        return true
+    }
+
+    func refreshSharedPlan(tasks: [LumaTask], planner: TaskPlanner, now: Date = .now, busyBlocks: [BusyTimeBlock]? = nil) {
+        if let busyBlocks { sharedBusyDay = calendar.startOfDay(for: now); sharedBusyBlocks = busyBlocks }
+        let externalBusy = sharedBusyDay == calendar.startOfDay(for: now) ? sharedBusyBlocks : []
+        var updated = SharedPlanBuilder(calendar: calendar).build(tasks: tasks, previous: sharedPlan,
+            todayPlan: dailyPlan, todayBudget: remainingAvailableMinutes(fallback: planner.availableTimeBudget, now: now),
+            availability: weeklyAvailability, preference: energyPreference, planner: planner, now: now)
+        let busy = externalBusy + planner.busyClassBlocks(on: now)
+        var warnings: [String] = []
+        if let agenda = dailyAgenda, calendar.isDate(agenda.day, inSameDayAs: now), agenda.availabilityConfirmed, !agenda.availabilityWindows.isEmpty {
+            var windows = DailyScheduler(calendar: calendar).freeAvailabilityWindows(in: agenda.availabilityWindows, busyBlocks: busy, minimumDurationMinutes: 1)
+            let indices = updated.blocks.indices.filter { calendar.isDate(updated.blocks[$0].day, inSameDayAs: now) && updated.blocks[$0].status != .completed }
+            // A user-chosen clock time remains fixed; other blocks fit around it.
+            for index in indices where updated.blocks[index].startMinute != nil {
+                let start = updated.blocks[index].startMinute!, end = start + updated.blocks[index].minutes
+                if !windows.contains(where: { $0.startMinuteOfDay <= start && $0.endMinuteOfDay >= end }) {
+                    let title = tasks.first { $0.id == updated.blocks[index].taskID }?.title ?? "Un bloque"
+                    warnings.append("El horario de \(title) queda fuera de tus ventanas libres o coincide con otro compromiso.")
+                }
+                windows = DailyScheduler(calendar: calendar).freeAvailabilityWindows(in: windows,
+                    busyBlocks: [BusyTimeBlock(title: "Bloque", startMinuteOfDay: start, endMinuteOfDay: end)], minimumDurationMinutes: 1)
+            }
+            for index in indices where updated.blocks[index].startMinute == nil {
+                if let slot = windows.firstIndex(where: { $0.durationMinutes >= updated.blocks[index].minutes }) {
+                    updated.blocks[index].startMinute = windows[slot].startMinuteOfDay
+                    windows[slot].startMinuteOfDay += updated.blocks[index].minutes
+                } else {
+                    warnings.append("Un bloque de \(updated.blocks[index].minutes) min todavía necesita un horario libre. Podés ampliar una ventana o dividir el avance.")
+                }
+            }
+        }
+        updated.schedulingWarnings = warnings.isEmpty ? nil : warnings
+        guard updated != sharedPlan else { return }
+        sharedPlan = updated
+        persistSharedPlan()
+    }
+
+    func workBlocks(on day: Date, taskID: UUID? = nil) -> [PlannedWorkBlock] {
+        sharedPlan.blocks.filter {
+            calendar.isDate($0.day, inSameDayAs: day) && (taskID == nil || $0.taskID == taskID)
+        }.sorted { $0.sequence < $1.sequence }
+    }
+
+    private func persistSharedPlan() {
+        if let data = try? JSONEncoder().encode(sharedPlan) { defaults.set(data, forKey: Self.sharedPlanKey) }
+    }
+
     func refreshPlan() {
         planRevision += 1
     }
@@ -176,6 +271,7 @@ final class AppState {
     }
 
     func ensureDailyTimeBudget(availableMinutes: Int, now: Date = .now) {
+        if let saved = dailyTimeBudget, saved.day > calendar.startOfDay(for: now) { return }
         guard dailyTimeBudget.map({ calendar.isDate($0.day, inSameDayAs: now) }) != true else { return }
         // Older versions have no reliable daily consumption history. Start with
         // today's declared availability instead of inferring it from lifetime progress.
@@ -188,7 +284,7 @@ final class AppState {
     /// An explicit "me quedan…" replaces the remaining allowance, not the time spent.
     func setRemainingAvailableMinutes(_ minutes: Int, now: Date = .now) {
         ensureDailyTimeBudget(availableMinutes: minutes, now: now)
-        guard var budget = dailyTimeBudget else { return }
+        guard var budget = dailyTimeBudget, calendar.isDate(budget.day, inSameDayAs: now) else { return }
         budget.allocatedMinutes = budget.consumedMinutes + min(600, max(0, minutes))
         saveTimeBudget(budget)
     }
@@ -202,7 +298,7 @@ final class AppState {
     ) -> Bool {
         guard minutes > 0 else { return false }
         ensureDailyTimeBudget(availableMinutes: initialAvailableMinutes, now: now)
-        guard var budget = dailyTimeBudget, budget.consumedMinutesByEventID[eventID] == nil else { return false }
+        guard var budget = dailyTimeBudget, calendar.isDate(budget.day, inSameDayAs: now), budget.consumedMinutesByEventID[eventID] == nil else { return false }
         budget.consumedMinutesByEventID[eventID] = min(1440, minutes)
         saveTimeBudget(budget)
         return true
@@ -277,28 +373,10 @@ final class AppState {
         }
 
         if let dailyPlan, calendar.isDate(dailyPlan.day, inSameDayAs: today) {
-            let recommendations = planner.recommendations(
-                from: pending,
-                now: now,
-                preference: energyPreference,
-                budgetOverride: remainingAvailableMinutes(now: now)
-            )
-            let ids = recommendations.map(\.task.id)
-            savePlan(
-                day: today,
-                taskIDs: ids,
-                preference: energyPreference,
-                inputFingerprint: inputFingerprint,
-                suggestedMinutesByTaskID: Dictionary(uniqueKeysWithValues: recommendations.map {
-                    ($0.task.id, $0.suggestedMinutes)
-                }),
-                restMinutes: planner.restRecommendation(
-                    from: tasks, now: now, preference: energyPreference,
-                    budgetOverride: remainingAvailableMinutes(now: now)
-                )?.suggestedMinutes ?? 0
-            )
-            refreshPlan()
-            return DailyPlanUpdate(created: dailyPlan.taskIDs != ids)
+            // Capturing or editing a task never silently replaces a confirmed plan.
+            if let inputFingerprint { updateDailyPlanInputFingerprint(inputFingerprint) }
+            coachMessage = "Guardé los cambios. Tu plan de hoy sigue igual; podés revisarlo con Reacomodar."
+            return DailyPlanUpdate()
         }
 
         let previousIDs = Set(dailyPlan?.taskIDs ?? [])
@@ -310,12 +388,14 @@ final class AppState {
         }
 
         energyPreference = .normal
-        let recommendations = planner.recommendations(
-            from: pending,
-            now: now,
-            preference: energyPreference,
-            budgetOverride: remainingAvailableMinutes(now: now)
-        )
+        let proposed = workBlocks(on: now).filter { $0.status == .proposed }
+        var proposedIDs: [UUID] = []
+        for block in proposed where !proposedIDs.contains(block.taskID) { proposedIDs.append(block.taskID) }
+        let proposedMinutes = Dictionary(proposed.map { ($0.taskID, $0.minutes) }, uniquingKeysWith: { first, _ in first })
+        let adopted = planner.recommendationsPreservingPlan(from: tasks, taskIDs: proposedIDs,
+            now: now, preference: energyPreference, savedMinutes: proposedMinutes, budgetOverride: remainingAvailableMinutes(now: now))
+        let recommendations = adopted.isEmpty ? planner.recommendations(from: pending, now: now,
+            preference: energyPreference, budgetOverride: remainingAvailableMinutes(now: now)) : adopted
         let ids = recommendations.map(\.task.id)
         let didRollOver = dailyPlan != nil
         savePlan(
@@ -612,21 +692,53 @@ final class AppState {
         onboardingCompleted = false
     }
 
-    func startFocus(for taskID: UUID, durationMinutes: Int? = nil) {
+    func startFocus(for taskID: UUID, durationMinutes: Int? = nil, plannedBlockID: UUID? = nil) {
         focusTaskID = taskID
         focusDurationMinutes = durationMinutes
+        if focusSession.elapsedSeconds == 0 || focusSession.completedSession {
+            focusSession.reset()
+            focusSession.selectedTaskID = taskID
+            let blocks = workBlocks(on: .now, taskID: taskID).filter { $0.status == .confirmed }
+            focusSession.plannedBlockID = blocks.first { $0.id == plannedBlockID }?.id ?? blocks.first?.id
+            if let durationMinutes { focusSession.durationMinutes = durationMinutes; focusSession.remainingSeconds = durationMinutes * 60 }
+            focusSession.checkpoint()
+        } else if focusSession.selectedTaskID != taskID {
+            coachMessage = "Hay una sesión en curso. Guardá ese avance antes de cambiar de tarea."
+        }
         selection = .focus
     }
 
-    func finishPlannedBlock(for taskID: UUID) {
-        guard let dailyPlan else { return }
-        savePlan(
-            day: dailyPlan.day,
-            taskIDs: dailyPlan.taskIDs.filter { $0 != taskID },
-            preference: dailyPlan.energyPreference,
-            inputFingerprint: dailyPlan.inputFingerprint,
-            suggestedMinutesByTaskID: dailyPlan.suggestedMinutesByTaskID?.filter { $0.key != taskID }
-        )
+    func finishPlannedBlock(for taskID: UUID, blockID: UUID? = nil, workedMinutes: Int? = nil, taskCompleted: Bool = false, now: Date = .now) {
+        if let blockID, sharedPlan.blocks.contains(where: { $0.id == blockID && $0.status == .completed }) { return }
+        if let index = sharedPlan.blocks.firstIndex(where: {
+            $0.taskID == taskID && $0.status == .confirmed && calendar.isDate($0.day, inSameDayAs: now) && (blockID == nil || $0.id == blockID)
+        }) {
+            let original = sharedPlan.blocks[index]
+            let worked = max(0, min(original.minutes, workedMinutes ?? original.minutes))
+            sharedPlan.blocks[index].status = .completed
+            sharedPlan.blocks[index].minutes = worked
+            if worked == 0 { sharedPlan.blocks.remove(at: index) }
+            if !taskCompleted, worked > 0, worked < original.minutes {
+                let remainder = PlannedWorkBlock(taskID: taskID, day: original.day, minutes: original.minutes - worked,
+                    startMinute: nil, status: .confirmed, sequence: original.sequence + 1)
+                for i in sharedPlan.blocks.indices where sharedPlan.blocks[i].day == original.day && sharedPlan.blocks[i].sequence > original.sequence {
+                    sharedPlan.blocks[i].sequence += 1
+                }
+                sharedPlan.blocks.append(remainder)
+            }
+            if taskCompleted { sharedPlan.blocks.removeAll { $0.taskID == taskID && $0.status != .completed } }
+            persistSharedPlan()
+        }
+        guard var plan = dailyPlan, calendar.isDate(plan.day, inSameDayAs: now) else { return }
+        if !taskCompleted, let next = workBlocks(on: now, taskID: taskID).first(where: { $0.status == .confirmed }) {
+            if plan.suggestedMinutesByTaskID == nil { plan.suggestedMinutesByTaskID = [:] }
+            plan.suggestedMinutesByTaskID?[taskID] = next.minutes
+        } else {
+            plan.taskIDs.removeAll { $0 == taskID }
+            plan.suggestedMinutesByTaskID?.removeValue(forKey: taskID)
+        }
+        savePlan(day: plan.day, taskIDs: plan.taskIDs, preference: plan.energyPreference,
+            inputFingerprint: plan.inputFingerprint, suggestedMinutesByTaskID: plan.suggestedMinutesByTaskID, restMinutes: plan.restMinutes)
         refreshPlan()
     }
 
@@ -669,19 +781,15 @@ final class AppState {
             suggestedMinutesByTaskID: proposal.afterSuggestedMinutesByTaskID,
             restMinutes: proposal.afterRestMinutes
         )
-        saveAgenda(
-            day: proposal.day,
+        if var saved = dailyPlan {
+            saved.allowExtraSessions = proposal.afterAvailableMinutes > proposal.beforeAvailableMinutes && proposal.afterEnergy == proposal.beforeEnergy
+            restoreDailyPlan(saved)
+        }
+        let existingWindows = dailyAgenda.flatMap { calendar.isDate($0.day, inSameDayAs: proposal.day) ? $0.availabilityWindows : nil } ?? []
+        saveAgenda(day: proposal.day,
             availableMinutes: remainingAvailableMinutes(fallback: proposal.afterAvailableMinutes, now: proposal.day),
-            startMinuteOfDay: proposal.startMinuteOfDay,
-            availabilityWindows: proposal.afterAvailableMinutes > 0
-                ? [AvailabilityWindow(
-                    startMinuteOfDay: proposal.startMinuteOfDay,
-                    endMinuteOfDay: min(24 * 60, proposal.startMinuteOfDay + proposal.afterAvailableMinutes)
-                )]
-                : [],
-            availabilityConfirmed: true,
-            blocks: proposal.afterBlocks
-        )
+            startMinuteOfDay: proposal.startMinuteOfDay, availabilityWindows: existingWindows,
+            availabilityConfirmed: dailyAgenda?.availabilityConfirmed ?? false, blocks: proposal.afterBlocks)
         refreshPlan()
     }
 
@@ -838,7 +946,8 @@ final class AppState {
             suggestedMinutesByTaskID: suggestedMinutesByTaskID,
             restMinutes: restMinutes ?? dailyPlan.flatMap {
                 calendar.isDate($0.day, inSameDayAs: day) ? $0.restMinutes : nil
-            }
+            },
+            allowExtraSessions: dailyPlan.flatMap { calendar.isDate($0.day, inSameDayAs: day) ? $0.allowExtraSessions : nil }
         )
         dailyPlan = snapshot
         if let data = try? JSONEncoder().encode(snapshot) {

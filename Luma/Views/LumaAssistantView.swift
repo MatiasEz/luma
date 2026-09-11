@@ -417,7 +417,8 @@ struct LumaAssistantView: View {
             energyPreference: appState.energyPreference,
             workload: planner.workload(from: tasks),
             profile: profiles.first,
-            remainingAvailableMinutes: appState.remainingAvailableMinutes(fallback: todayContext?.availableMinutes ?? 120)
+            remainingAvailableMinutes: appState.remainingAvailableMinutes(fallback: todayContext?.availableMinutes ?? 120),
+            question: question, rememberedPreferences: appState.rememberedPreferences
         )
         let evidence = LumaAssistantContextBuilder.makeEvidence(
             tasks: tasks,
@@ -483,6 +484,17 @@ struct LumaAssistantView: View {
     ) -> LumaChatSuggestedAction? {
         guard let action else { return nil }
         switch action.kind {
+        case .changeDueDate:
+            guard hasDeadlineIntent(question), action.dateValue != nil, tasks.contains(where: { $0.id == action.taskID }) else { return nil }
+            return action
+        case .prioritizeTask:
+            guard normalizedIntent(question).contains("prioridad") || normalizedIntent(question).contains("primero"), tasks.contains(where: { $0.id == action.taskID && !$0.isCompleted }) else { return nil }
+            return action
+        case .rememberPreference:
+            guard ["recorda", "recuerda", "acordate", "tene en cuenta", "ten en cuenta"].contains(where: normalizedIntent(question).contains) else { return nil }
+            var validated = action
+            validated.label = String(question.prefix(300))
+            return validated
         case .replan:
             return hasReplanIntent(question) ? action : nil
         case .startFocus:
@@ -518,12 +530,7 @@ struct LumaAssistantView: View {
                   tasks.contains(where: { $0.id == taskID })
             else { return nil }
             var validated = action
-            validated.dateValue = Calendar.current.date(
-                bySettingHour: 20,
-                minute: 0,
-                second: 0,
-                of: date
-            ) ?? date
+            validated.dateValue = Calendar.current.startOfDay(for: date)
             return validated
         case .changeDuration:
             guard hasDurationIntent(question),
@@ -544,7 +551,9 @@ struct LumaAssistantView: View {
         return switch action.kind {
         case .replan: hasReplanIntent(question)
         case .renameTask: hasRenameIntent(question)
-        case .changeDeadline: hasDeadlineIntent(question)
+        case .changeDueDate, .changeDeadline: hasDeadlineIntent(question)
+        case .prioritizeTask: normalizedIntent(question).contains("prioridad") || normalizedIntent(question).contains("primero")
+        case .rememberPreference: true
         case .changeDuration: hasDurationIntent(question)
         case .startFocus, .completeTask: true
         }
@@ -596,6 +605,9 @@ struct LumaAssistantView: View {
 
     private func canApply(_ action: LumaChatSuggestedAction) -> Bool {
         switch action.kind {
+        case .rememberPreference: return !action.label.isEmpty
+        case .prioritizeTask: return tasks.contains { $0.id == action.taskID && !$0.isCompleted }
+        case .changeDueDate: return action.dateValue != nil && tasks.contains { $0.id == action.taskID }
         case .replan:
             return true
         case .startFocus:
@@ -697,6 +709,16 @@ struct LumaAssistantView: View {
         guard canApply(action), record.appliedAt == nil else { return }
 
         switch action.kind {
+        case .rememberPreference:
+            if !appState.rememberedPreferences.contains(action.label) { appState.rememberedPreferences.append(action.label) }
+        case .prioritizeTask:
+            guard let task = tasks.first(where: { $0.id == action.taskID }), appState.prioritize(task, tasks: tasks, planner: planner) else { return }
+            rebuildAgenda()
+        case .changeDueDate:
+            guard let task = tasks.first(where: { $0.id == action.taskID }), let date = action.dateValue else { return }
+            let previous = task.dueDate
+            task.dueDate = date; task.touch(); appState.refreshPlan()
+            appState.registerUndo(message: "Entrega actualizada") { task.dueDate = previous; task.touch(); try? modelContext.save(); appState.refreshPlan() }
         case .replan:
             return
         case .startFocus:
@@ -708,7 +730,7 @@ struct LumaAssistantView: View {
                   let task = tasks.first(where: { $0.id == taskID })
             else { return }
             task.markCompleted()
-            appState.replanDaily(from: tasks, planner: planner, preference: appState.energyPreference)
+            appState.finishPlannedBlock(for: task.id, workedMinutes: 0, taskCompleted: true)
             rebuildAgenda()
             try? calendarService.syncTask(task)
             appState.registerUndo(message: "Tarea completada") {
@@ -790,6 +812,9 @@ struct LumaAssistantView: View {
 
     private func actionDescription(_ action: LumaChatSuggestedAction) -> String {
         switch action.kind {
+        case .changeDueDate: return "Cambiar únicamente la fecha de entrega a \(action.dateValue?.formatted(date: .long, time: .omitted) ?? "la fecha elegida")."
+        case .prioritizeTask: return "Poner esta tarea primero, conservando las demás prioridades que entren en tu día."
+        case .rememberPreference: return "Guardar esta preferencia para próximas conversaciones: \(action.label)"
         case .replan:
             let energy = action.energyPreference?.title ?? appState.energyPreference.title
             let time = action.availableMinutes.map { " con \($0) minutos disponibles" } ?? ""
@@ -825,6 +850,9 @@ struct LumaAssistantView: View {
         case .completeTask: "Confirmar acción"
         case .changeDeadline: "Cambiar fecha"
         case .changeDuration: "Cambiar duración"
+        case .changeDueDate: "Cambiar entrega"
+        case .prioritizeTask: "Cambiar prioridad"
+        case .rememberPreference: "Recordar preferencia"
         }
     }
 
@@ -836,16 +864,28 @@ struct LumaAssistantView: View {
         case .renameTask: "pencil"
         case .changeDeadline: "calendar.badge.clock"
         case .changeDuration: "timer"
+        case .changeDueDate: "flag"
+        case .prioritizeTask: "arrow.up"
+        case .rememberPreference: "brain"
         }
     }
 
     private func deleteConversation() {
-        messages.forEach(modelContext.delete)
-        try? modelContext.save()
+        let ids = messages.map(\.id)
+        messages.forEach { modelContext.delete($0) }
+        do {
+            try modelContext.save()
+            ids.forEach { CloudSyncService.queueDeletion(table: "chat_messages", id: $0) }
+        } catch { modelContext.rollback(); errorMessage = "No pude borrar la conversación. Podés reintentar." }
     }
 
     private func trimConversationIfNeeded() {
         guard messages.count > 100 else { return }
-        messages.prefix(messages.count - 100).forEach(modelContext.delete)
+        let old = Array(messages.prefix(messages.count - 100)), ids = old.map(\.id)
+        old.forEach { modelContext.delete($0) }
+        do {
+            try modelContext.save()
+            ids.forEach { CloudSyncService.queueDeletion(table: "chat_messages", id: $0) }
+        } catch { modelContext.rollback(); errorMessage = "No pude actualizar el historial. Podés reintentar." }
     }
 }

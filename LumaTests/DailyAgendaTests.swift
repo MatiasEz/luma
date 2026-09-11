@@ -218,7 +218,7 @@ final class DailyAgendaTests: XCTestCase {
             LumaTask(
                 title: "Entrega importante",
                 area: .university,
-                deadline: now.addingTimeInterval(86400),
+                dueDate: now.addingTimeInterval(86400),
                 estimatedMinutes: 45,
                 energy: .high,
                 impact: .grade,
@@ -227,7 +227,7 @@ final class DailyAgendaTests: XCTestCase {
             LumaTask(
                 title: "Enviar cotización",
                 area: .sideHustle,
-                deadline: now.addingTimeInterval(2 * 86400),
+                dueDate: now.addingTimeInterval(2 * 86400),
                 estimatedMinutes: 45,
                 energy: .medium,
                 impact: .money
@@ -235,7 +235,7 @@ final class DailyAgendaTests: XCTestCase {
             LumaTask(
                 title: "Ordenar papeles",
                 area: .errands,
-                deadline: now.addingTimeInterval(3 * 86400),
+                dueDate: now.addingTimeInterval(3 * 86400),
                 estimatedMinutes: 45,
                 energy: .low,
                 impact: .urgency

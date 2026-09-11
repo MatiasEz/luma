@@ -241,6 +241,7 @@ final class TaskEditorViewModel {
     var estimatedMinutes: Int
     var energy: EnergyLevel
     var impact: ImpactType
+    var preparesForClass = false
     var academicWeight: Double?
     var academicSubjectID: UUID?
     var subjectGradeItemID: UUID?
@@ -258,6 +259,7 @@ final class TaskEditorViewModel {
         energy = task.energy
         impact = task.impact
         academicWeight = task.academicWeight
+        preparesForClass = task.planningDetails.preparesForClass ?? false
         academicSubjectID = task.academicSubjectID
         subjectGradeItemID = task.subjectGradeItemID
         grade = task.grade
@@ -282,6 +284,9 @@ final class TaskEditorViewModel {
     }
 
     func apply(to task: LumaTask) {
+        var details = task.planningDetails
+        details.preparesForClass = preparesForClass
+        task.planningDetails = details
         task.title = title.trimmingCharacters(in: .whitespacesAndNewlines)
         task.area = area
         task.dueDate = dueDate
@@ -289,10 +294,10 @@ final class TaskEditorViewModel {
         task.estimatedMinutes = estimatedMinutes
         task.energy = energy
         task.impact = impact
-        task.academicWeight = nil
+        task.academicWeight = area == .university ? academicWeight : nil
         task.academicSubjectID = area == .university ? academicSubjectID : nil
-        task.subjectGradeItemID = nil
-        task.grade = nil
+        task.subjectGradeItemID = area == .university ? subjectGradeItemID : nil
+        task.grade = area == .university ? grade : nil
         task.unlocksTaskID = unlocksTaskID
         task.unlocksAnotherTask = unlocksTaskID != nil
         task.notes = notes

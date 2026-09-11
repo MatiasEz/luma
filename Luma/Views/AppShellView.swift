@@ -88,7 +88,7 @@ struct AppShellView: View {
         .sheet(isPresented: $appState.quickCapturePresented) {
             QuickCaptureView(initialText: appState.quickCaptureSeed)
                 .environment(aiEngine)
-                .frame(width: 720, height: 700)
+                .frame(width: 660)
         }
         .sheet(isPresented: Binding(
             get: { !appState.onboardingCompleted || profiles.isEmpty },
@@ -253,15 +253,16 @@ struct AppShellView: View {
         VStack(spacing: 0) {
             ScrollView {
                 VStack(alignment: .leading, spacing: 22) {
-                    navigationGroup("Tu día", items: [.today, .inbox, .week, .focus], selection: selection)
-                    navigationGroup("Estudio y hábitos", items: [.subjects, .exams, .routines], selection: selection)
+                    navigationGroup("Tu día", items: [.week, .today, .inbox], selection: selection)
+                    navigationGroup("Estudio", items: [.subjects, .exams], selection: selection)
+                    navigationGroup("Tu ritmo", items: [.focus, .routines], selection: selection)
                 }
                 .padding(.horizontal, 14)
                 .padding(.top, 24)
                 .padding(.bottom, 18)
             }
             .onMoveCommand { direction in
-                let items: [NavigationItem] = [.today, .inbox, .week, .focus, .subjects, .exams, .routines]
+                let items: [NavigationItem] = [.week, .today, .inbox, .subjects, .exams, .focus, .routines]
                 guard let focusedNavigation,
                       let index = items.firstIndex(of: focusedNavigation) else { return }
                 let nextIndex: Int

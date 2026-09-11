@@ -9,6 +9,7 @@ struct InboxView: View {
     @Query(sort: \LumaTask.createdAt, order: .reverse) private var tasks: [LumaTask]
     @Query(sort: \AcademicSubject.name) private var subjects: [AcademicSubject]
     @State private var viewModel = InboxViewModel()
+    @State private var postponementTask: LumaTask?
 
     private var filteredTasks: [LumaTask] {
         viewModel.filteredTasks(from: tasks)
@@ -61,6 +62,7 @@ struct InboxView: View {
         }
         .animation(.easeInOut(duration: 0.2), value: viewModel.selectedTask?.id)
         .navigationTitle("Inbox")
+        .sheet(item: $postponementTask) { PostponementEditor(task: $0) }
         .sheet(isPresented: Binding(
             get: { viewModel.editingTask != nil },
             set: { if !$0 { viewModel.editingTask = nil } }
@@ -87,10 +89,25 @@ struct InboxView: View {
                     message: emptyStateMessage
                 )
             } else {
-                LazyVStack(spacing: 10) {
-                    ForEach(regularTasks) { task in
-                        taskRow(task)
+                LazyVStack(alignment: .leading, spacing: 14) {
+                    let manual = regularTasks.filter { $0.academicSourceType == nil }
+                    ForEach(manual.filter { $0.dueDate != nil || $0.deadline != nil }) { taskRow($0) }
+                    let undated = manual.filter { $0.dueDate == nil && $0.deadline == nil }
+                    if !undated.isEmpty {
+                        DisclosureGroup("Sin fecha · \(undated.count) pendientes") {
+                            Text("Podés completar la fecha cuando la sepas.").font(.caption).foregroundStyle(LumaPalette.secondaryInk)
+                            ForEach(undated) { taskRow($0) }
+                        }
                     }
+                    let sources = Array(Set(regularTasks.filter { $0.academicSourceType == .examStudy }.compactMap(\.sourceID))).sorted { $0.uuidString < $1.uuidString }
+                    ForEach(sources, id: \.self) { source in
+                        let group = regularTasks.filter { $0.sourceID == source }.sorted { ($0.planningDetails.studyOrder ?? 0) < ($1.planningDetails.studyOrder ?? 0) }
+                        DisclosureGroup("Preparación · \(group.first.flatMap { subjectName(for: $0) } ?? "Examen") · \(group.count) pasos") {
+                            ForEach(group) { taskRow($0) }
+                        }
+                    }
+                    let routine = regularTasks.filter { $0.academicSourceType == .routine || $0.academicSourceType == .rest }
+                    if !routine.isEmpty { DisclosureGroup("Rutinas y pausas · \(routine.count)") { ForEach(routine) { taskRow($0) } } }
                 }
             }
         }
@@ -129,7 +146,7 @@ struct InboxView: View {
             onToggleCompletion: { toggleCompletion(task) },
             onOpenDetail: { viewModel.selectedTask = task },
             onEdit: { viewModel.editingTask = task },
-            onPostpone: { postpone(task) },
+            onPostpone: { postponementTask = task },
             onDelete: { delete(task) }
         )
     }

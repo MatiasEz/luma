@@ -583,7 +583,6 @@ private struct SubjectEditorView: View {
         let savedSubject: AcademicSubject
         if let subject {
             subject.name = viewModel.trimmedName
-            subject.targetGrade = nil
             subject.colorHex = viewModel.colorHex
             subject.updateSyllabus(
                 topics: viewModel.resolvedSyllabusTopics(),
@@ -610,6 +609,7 @@ private struct SubjectEditorView: View {
         }
 
         let retained = Set(viewModel.meetings.map(\.id))
+        let removedMeetingIDs = allMeetings.filter { $0.subjectID == savedSubject.id && !retained.contains($0.id) }.map(\.id)
         for existing in allMeetings where existing.subjectID == savedSubject.id && !retained.contains(existing.id) {
             modelContext.delete(existing)
         }
@@ -633,7 +633,14 @@ private struct SubjectEditorView: View {
                 ))
             }
         }
-        try? modelContext.save()
+        do {
+            try modelContext.save()
+            for id in removedMeetingIDs { CloudSyncService.queueDeletion(table: "subject_class_meetings", id: id) }
+        } catch {
+            modelContext.rollback()
+            viewModel.pdfMessage = "No pude guardar los cambios. Tus datos siguen en el formulario."
+            return
+        }
         #if DEBUG
         let source = viewModel.syllabusSourceFileName.isEmpty ? "manual" : viewModel.syllabusSourceFileName
         print("✅ [TEMARIO-MATERIA] Guardado | materia=\(savedSubject.name) | fuente=\(source) | temas=\(savedSubject.syllabusTopics.count) | horarios=\(viewModel.meetings.count)")

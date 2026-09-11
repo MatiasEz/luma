@@ -298,7 +298,7 @@ final class DailyTimeBudgetTests: XCTestCase {
 
         work.recordFocusSession(minutes: 20, at: setup.now)
         XCTAssertTrue(state.recordTimeSpent(eventID: UUID(), minutes: 20, now: setup.now))
-        state.finishPlannedBlock(for: work.id)
+        state.finishPlannedBlock(for: work.id, now: setup.now)
 
         let reopened = setup.makeState()
         XCTAssertEqual(reopened.remainingAvailableMinutes(now: setup.now), 10)
@@ -317,7 +317,7 @@ final class DailyTimeBudgetTests: XCTestCase {
         let restEventID = UUID()
         XCTAssertTrue(reopened.recordTimeSpent(eventID: restEventID, minutes: pause.suggestedMinutes, now: setup.now))
         rest.markCompleted()
-        reopened.finishPlannedBlock(for: rest.id)
+        reopened.finishPlannedBlock(for: rest.id, now: setup.now)
         XCTAssertEqual(reopened.remainingAvailableMinutes(now: setup.now), 0)
 
         XCTAssertTrue(reopened.undoTimeSpent(eventID: restEventID, now: setup.now))

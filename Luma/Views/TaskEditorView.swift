@@ -2,6 +2,7 @@ import SwiftData
 import SwiftUI
 
 struct TaskEditorView: View {
+    @State private var saveError = false
     @Environment(AppState.self) private var appState
     @Environment(CalendarIntegrationService.self) private var calendarService
     @Environment(\.dismiss) private var dismiss
@@ -62,6 +63,7 @@ struct TaskEditorView: View {
             footer
         }
         .padding(26)
+        .alert("No pude guardar los cambios", isPresented: $saveError) { Button("Aceptar", role: .cancel) {} } message: { Text("Lo que escribiste sigue en el formulario. Podés reintentar.") }
         .background(LumaBackground())
         .environment(\.colorScheme, .light)
     }
@@ -178,10 +180,14 @@ struct TaskEditorView: View {
     }
 
     private var academicFields: some View {
-        AcademicTaskFields(
-            subjects: availableSubjects,
-            subjectID: $viewModel.academicSubjectID
-        )
+        VStack(alignment: .leading, spacing: 12) {
+            AcademicTaskFields(subjects: availableSubjects, subjectID: $viewModel.academicSubjectID)
+            Toggle("Tiene que estar lista antes de una clase", isOn: $viewModel.preparesForClass)
+            Toggle("Cuenta para la nota", isOn: Binding(get: { viewModel.academicWeight != nil }, set: { viewModel.academicWeight = $0 ? 20 : nil }))
+            if viewModel.academicWeight != nil {
+                Stepper("Ponderación: \(Int(viewModel.academicWeight ?? 0))%", value: Binding(get: { viewModel.academicWeight ?? 20 }, set: { viewModel.academicWeight = $0 }), in: 0...100, step: 5)
+            }
+        }
     }
 
     private var notesField: some View {
@@ -231,9 +237,11 @@ struct TaskEditorView: View {
     private func save() {
         viewModel.apply(to: task)
 
-        try? modelContext.save()
-        try? calendarService.syncTask(task)
-        appState.refreshPlan()
-        dismiss()
+        do {
+            try modelContext.save()
+            try? calendarService.syncTask(task)
+            appState.refreshPlan()
+            dismiss()
+        } catch { modelContext.rollback(); saveError = true }
     }
 }

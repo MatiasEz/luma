@@ -113,7 +113,7 @@ final class DailyPlanTests: XCTestCase {
 
         let completedBlock = try XCTUnwrap(original.first)
         completedBlock.task.markCompleted()
-        state.finishPlannedBlock(for: completedBlock.id)
+        state.finishPlannedBlock(for: completedBlock.id, now: setup.now)
         _ = state.prepareDailyPlan(from: tasks, planner: planner, now: setup.now)
         let remaining = state.dailyRecommendations(from: tasks, planner: planner, now: setup.now)
 
@@ -179,7 +179,7 @@ final class DailyPlanTests: XCTestCase {
         _ = state.prepareDailyPlan(from: [task], planner: planner, now: setup.now)
 
         task.recordFocusSession(minutes: 45, at: setup.now)
-        state.finishPlannedBlock(for: task.id)
+        state.finishPlannedBlock(for: task.id, now: setup.now)
         let viewModel = DashboardViewModel()
         viewModel.refreshPresentation(tasks: [task], planner: planner, appState: state, now: setup.now)
 
@@ -228,7 +228,7 @@ final class DailyPlanTests: XCTestCase {
             LumaTask(
                 title: "Entrega importante",
                 area: .university,
-                deadline: now.addingTimeInterval(86400),
+                dueDate: now.addingTimeInterval(86400),
                 estimatedMinutes: 90,
                 energy: .high,
                 impact: .grade,
@@ -237,7 +237,7 @@ final class DailyPlanTests: XCTestCase {
             LumaTask(
                 title: "Enviar cotización",
                 area: .sideHustle,
-                deadline: now.addingTimeInterval(2 * 86400),
+                dueDate: now.addingTimeInterval(2 * 86400),
                 estimatedMinutes: 25,
                 energy: .medium,
                 impact: .money
@@ -245,7 +245,7 @@ final class DailyPlanTests: XCTestCase {
             LumaTask(
                 title: "Ordenar papeles",
                 area: .errands,
-                deadline: now.addingTimeInterval(3 * 86400),
+                dueDate: now.addingTimeInterval(3 * 86400),
                 estimatedMinutes: 20,
                 energy: .low,
                 impact: .urgency
@@ -253,7 +253,7 @@ final class DailyPlanTests: XCTestCase {
             LumaTask(
                 title: "Practicar guitarra",
                 area: .hobbies,
-                deadline: now.addingTimeInterval(5 * 86400),
+                dueDate: now.addingTimeInterval(5 * 86400),
                 estimatedMinutes: 45,
                 energy: .low,
                 impact: .wellbeing

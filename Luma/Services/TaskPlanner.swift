@@ -35,6 +35,9 @@ struct TaskPlanner {
     private let subjectNames: [UUID: String]
     private let weeklyAvailability: [DayAvailability]
     private let restCounts: Bool
+    private var dependencyDates: [UUID: Date] = [:]
+    private var contextPrepared = false
+    private var contextTasks: [LumaTask] = []
 
     init(
         calendar: Calendar = .current,
@@ -62,6 +65,17 @@ struct TaskPlanner {
         self.restCounts = restCounts
     }
 
+    func isEssentialToday(_ task: LumaTask, in tasks: [LumaTask], now: Date) -> Bool {
+        withContext(tasks).isCriticalToday(task, now: now)
+    }
+
+    func busyClassBlocks(on day: Date) -> [BusyTimeBlock] {
+        classMeetings.filter { $0.weekday == calendar.component(.weekday, from: day) }.map {
+            BusyTimeBlock(title: subjectNames[$0.subjectID] ?? "Clase", startMinuteOfDay: $0.startMinuteOfDay, endMinuteOfDay: $0.endMinuteOfDay)
+        }
+    }
+
+    var countsRest: Bool { restCounts }
     var availableTimeBudget: Int { planningBudget() }
 
     func recommendations(
@@ -87,10 +101,11 @@ struct TaskPlanner {
         limit: Int = 3,
         budgetOverride: Int? = nil
     ) -> DailyPlanResult {
+        if !contextPrepared { return withContext(tasks).planningResult(from: tasks, now: now, preference: preference, limit: limit, budgetOverride: budgetOverride) }
         let pending = tasks.filter { !$0.isCompleted && $0.academicSourceType != .rest }
         let blockedTaskIDs = Set(pending.compactMap(\.unlocksTaskID))
         let actionable = pending.filter {
-            !blockedTaskIDs.contains($0.id) && !requiresOverdueReview($0, now: now)
+            !blockedTaskIDs.contains($0.id) && isAvailable($0, now: now) && !requiresOverdueReview($0, now: now)
         }
         let compatible = actionable.filter { isCompatibleWithEnergy($0, now: now, preference: preference) }
         let areaCounts = Dictionary(grouping: pending, by: \.area).mapValues(\.count)
@@ -179,6 +194,7 @@ struct TaskPlanner {
         now: Date = .now,
         preference: EnergyPreference = .normal
     ) -> Bool {
+        if !contextPrepared { return withContext(tasks).needsCapacityDecision(from: tasks, recommendations: recommendations, now: now, preference: preference) }
         let selectedMinutes = Dictionary(uniqueKeysWithValues: recommendations.map { ($0.id, $0.suggestedMinutes) })
         return tasks.contains { task in
             guard !task.isCompleted,
@@ -241,10 +257,11 @@ struct TaskPlanner {
         savedRestMinutes: Int? = nil,
         budgetOverride: Int? = nil
     ) -> [PlanRecommendation] {
+        if !contextPrepared { return withContext(tasks).recommendationsPreservingPlan(from: tasks, taskIDs: taskIDs, now: now, preference: preference, limit: limit, savedMinutes: savedMinutes, savedRestMinutes: savedRestMinutes, budgetOverride: budgetOverride) }
         let pending = tasks.filter { !$0.isCompleted && $0.academicSourceType != .rest }
         let blockedTaskIDs = Set(pending.compactMap(\.unlocksTaskID))
         let actionable = pending.filter {
-            !blockedTaskIDs.contains($0.id) && !requiresOverdueReview($0, now: now)
+            !blockedTaskIDs.contains($0.id) && isAvailable($0, now: now) && !requiresOverdueReview($0, now: now)
         }
         let byID = Dictionary(uniqueKeysWithValues: actionable.map { ($0.id, $0) })
         let areaCounts = Dictionary(grouping: pending, by: \.area).mapValues(\.count)
@@ -291,12 +308,14 @@ struct TaskPlanner {
         preference: EnergyPreference = .normal,
         savedMinutes: [UUID: Int]? = nil
     ) -> PlanRecommendation? {
+        if !contextPrepared { return withContext(tasks).optionalRecommendation(from: tasks, excluding: taskIDs, now: now, preference: preference, savedMinutes: savedMinutes) }
         guard taskIDs.count < 3 else { return nil }
         let allPending = tasks.filter { !$0.isCompleted && $0.academicSourceType != .rest }
         let blocked = Set(allPending.compactMap(\.unlocksTaskID))
         let actionable = allPending.filter {
             !taskIDs.contains($0.id)
                 && !blocked.contains($0.id)
+                && isAvailable($0, now: now)
                 && !requiresOverdueReview($0, now: now)
                 && isCompatibleWithEnergy($0, now: now, preference: preference)
         }
@@ -346,26 +365,25 @@ struct TaskPlanner {
             guard !task.isCompleted,
                   task.academicSourceType != .rest,
                   task.dueDate != nil,
-                  let target = task.planningTargetDate(calendar: calendar)
+                  let target = task.dueDate
             else { return false }
-            return target < today && !isScheduledToday(task, now: now)
+            return calendar.startOfDay(for: target) < today && !isScheduledToday(task, now: now)
         }.sorted { ($0.dueDate ?? .distantFuture) < ($1.dueDate ?? .distantFuture) }
     }
 
     func workload(from tasks: [LumaTask], now: Date = .now) -> WorkloadLevel {
-        let end = calendar.date(byAdding: .day, value: 7, to: calendar.startOfDay(for: now)) ?? now
+        let today = calendar.startOfDay(for: now)
+        let end = calendar.date(byAdding: .day, value: 7, to: today) ?? today
         let minutes = tasks.filter { task in
-            guard !task.isCompleted, task.academicSourceType != .rest else { return false }
-            if let dueDate = task.dueDate { return dueDate <= end }
-            if let deadline = task.deadline { return deadline <= end }
-            return false
-        }.reduce(0) { $0 + min($1.remainingEstimatedMinutes, 90) }
-
-        return switch minutes {
-        case ..<180: .low
-        case 180 ..< 480: .medium
-        default: .high
+            !task.isCompleted && task.academicSourceType != .rest && task.planningDetails.isRetired != true
+                && (task.dueDate ?? task.deadline).map { $0 < end } == true
+        }.reduce(0) { $0 + $1.remainingEstimatedMinutes }
+        let capacity = (0..<7).reduce(0) { total, offset in
+            total + availableCapacity(on: calendar.date(byAdding: .day, value: offset, to: today) ?? today)
         }
+        guard capacity > 0 else { return minutes > 0 ? .high : .low }
+        let ratio = Double(minutes) / Double(capacity)
+        return ratio > 1 ? .high : ratio >= 0.6 ? .medium : .low
     }
 
     private func recommendation(
@@ -455,7 +473,7 @@ struct TaskPlanner {
             if days > 0 { score += max(0, 12 - Double(days * 2)) }
         }
 
-        if let target = task.planningTargetDate(calendar: calendar) {
+        if let target = targetDate(task) {
             let days = daysBetween(today, calendar.startOfDay(for: target))
             switch days {
             case ...(-1): score += 92
@@ -480,7 +498,10 @@ struct TaskPlanner {
         case .general: score += 8
         }
 
-        score += Double(min(15, task.postponementCount * 4))
+        if task.planningDetails.postponementReason == .lessImportant { score -= 15 }
+        if let weight = task.academicWeight { score += min(100, max(0, weight)) * 0.35 }
+        // Repeated difficulty calls for a decision, rather than an ever-growing penalty.
+        score += Double(min(6, task.postponementCount * 2))
         if task.unlocksTaskID != nil || task.unlocksAnotherTask { score += 12 }
 
         switch task.academicSourceType {
@@ -536,6 +557,7 @@ struct TaskPlanner {
         suggestedMinutes: Int
     ) -> String {
         var fragments: [String] = []
+        if let step = task.planningDetails.nextStep { fragments.append("podés empezar por: \(step)") }
         let today = calendar.startOfDay(for: now)
 
         if let scheduled = task.deadline, calendar.isDate(scheduled, inSameDayAs: now) {
@@ -543,15 +565,21 @@ struct TaskPlanner {
         }
 
         if let dueDate = task.dueDate,
-           let target = task.planningTargetDate(calendar: calendar)
+           let target = targetDate(task)
         {
             let targetDays = daysBetween(today, calendar.startOfDay(for: target))
             let dueDays = daysBetween(today, calendar.startOfDay(for: dueDate))
-            if targetDays < 0 { fragments.append("ya pasó el día previsto para dejarla lista") }
+            if dueDays == 0 { fragments.append("se entrega hoy") }
+            else if targetDays < 0 { fragments.append("conviene recuperar este avance antes de la entrega") }
             else if targetDays == 0, dueDays == 1 { fragments.append("se entrega mañana y conviene dejarla lista hoy") }
             else if targetDays == 0 { fragments.append("hoy es el último día seguro para avanzar") }
             else if dueDays <= 7 { fragments.append("se entrega en \(dueDays) días") }
         }
+
+        if let inherited = dependencyDates[task.id], inherited < (task.dueDate ?? .distantFuture) {
+            fragments.insert("desbloquea una entrega del \(inherited.formatted(.dateTime.day().month(.abbreviated)))", at: 0)
+        }
+        if let weight = task.academicWeight, weight > 0 { fragments.append("vale \(Int(weight))% de la nota") }
 
         if task.remainingEstimatedMinutes > suggestedMinutes {
             fragments.append("un bloque de \(suggestedMinutes) min evita dejar todo para el final")
@@ -595,17 +623,15 @@ struct TaskPlanner {
     private func isCriticalToday(_ task: LumaTask, now: Date) -> Bool {
         // A calendar choice remains visible, but it does not make demanding
         // work unavoidable on a tired day without a real delivery constraint.
-        guard task.dueDate != nil,
-              let target = task.planningTargetDate(calendar: calendar)
+        guard effectiveDueDate(task) != nil,
+              let target = targetDate(task)
         else { return false }
         return calendar.startOfDay(for: target) <= calendar.startOfDay(for: now)
     }
 
     private func requiresOverdueReview(_ task: LumaTask, now: Date) -> Bool {
-        guard task.dueDate != nil,
-              let target = task.planningTargetDate(calendar: calendar)
-        else { return false }
-        return calendar.startOfDay(for: target) < calendar.startOfDay(for: now)
+        guard let due = task.dueDate else { return false }
+        return calendar.startOfDay(for: due) < calendar.startOfDay(for: now)
             && !isScheduledToday(task, now: now)
     }
 
@@ -614,7 +640,7 @@ struct TaskPlanner {
     }
 
     private func progressivePressure(for task: LumaTask, now: Date) -> Double {
-        guard let target = task.planningTargetDate(calendar: calendar) else { return 0 }
+        guard let target = targetDate(task) else { return 0 }
         let today = calendar.startOfDay(for: now)
         let targetDay = calendar.startOfDay(for: target)
         guard targetDay >= today else { return 2 }
@@ -632,7 +658,9 @@ struct TaskPlanner {
 
     private func availableCapacity(on day: Date) -> Int {
         let weekday = calendar.component(.weekday, from: day)
-        let base = weeklyAvailability.first(where: { $0.weekday == weekday })?.availableMinutes
+        let availability = weeklyAvailability.first(where: { $0.weekday == weekday })
+        if availability?.isEnabled == false { return 0 }
+        let base = availability?.availableMinutes
             ?? availableMinutes
             ?? 120
         return max(0, base - (restCounts ? 15 : 0))
@@ -649,7 +677,8 @@ struct TaskPlanner {
     }
 
     private func mustBeReadyBeforeClass(_ task: LumaTask, classDate: Date) -> Bool {
-        guard let dueDate = task.dueDate else { return task.academicSourceType == .routine }
+        guard task.planningDetails.preparesForClass == true else { return false }
+        guard let dueDate = task.dueDate else { return true }
         return calendar.startOfDay(for: dueDate) <= calendar.startOfDay(for: classDate)
     }
 
@@ -687,7 +716,54 @@ struct TaskPlanner {
         )
     }
 
+    private func withContext(_ tasks: [LumaTask]) -> TaskPlanner {
+        var copy = self
+        copy.contextPrepared = true
+        copy.contextTasks = tasks
+        let pending = Dictionary(uniqueKeysWithValues: tasks.filter { !$0.isCompleted }.map { ($0.id, $0) })
+        for task in pending.values {
+            var visited: Set<UUID> = [task.id]
+            var nextID = task.unlocksTaskID
+            var earliest = task.dueDate
+            while let id = nextID, visited.insert(id).inserted, let next = pending[id] {
+                if let due = next.dueDate { earliest = min(earliest ?? due, due) }
+                nextID = next.unlocksTaskID
+            }
+            copy.dependencyDates[task.id] = earliest
+        }
+        return copy
+    }
+
+    private func effectiveDueDate(_ task: LumaTask) -> Date? {
+        dependencyDates[task.id] ?? task.dueDate
+    }
+
+    private func targetDate(_ task: LumaTask) -> Date? {
+        if let inherited = dependencyDates[task.id], inherited < (task.dueDate ?? .distantFuture) {
+            return calendar.date(byAdding: .day, value: -1, to: calendar.startOfDay(for: inherited))
+        }
+        return task.planningTargetDate(calendar: calendar)
+    }
+
+    private func isAvailable(_ task: LumaTask, now: Date) -> Bool {
+        let today = calendar.startOfDay(for: now)
+        if let scheduled = task.deadline, calendar.startOfDay(for: scheduled) > today { return false }
+        let details = task.planningDetails
+        if details.isRetired == true { return false }
+        if let start = details.startDate, calendar.startOfDay(for: start) > today { return false }
+        if let deferred = details.deferredUntil, calendar.startOfDay(for: deferred) > today { return false }
+        if details.postponementReason == .waiting { return false }
+        if let order = details.studyOrder, let source = task.sourceID {
+            return !contextTasks.contains {
+                !$0.isCompleted && $0.sourceID == source && $0.id != task.id
+                    && ($0.planningDetails.studyOrder ?? Int.max) < order
+            }
+        }
+        return true
+    }
+
     private func suggestedMinutes(for task: LumaTask, preference: EnergyPreference) -> Int {
+        if task.planningDetails.postponementReason == .unclear { return min(15, task.remainingEstimatedMinutes) }
         let learned = preferredBlockOverride
             ?? (rhythmProfile?.isReady == true ? rhythmProfile?.preferredBlockMinutes : nil)
             ?? 45
@@ -708,8 +784,8 @@ struct TaskPlanner {
         let rhsCritical = isCriticalToday(rhs.task, now: now)
         if lhsCritical != rhsCritical { return lhsCritical }
         if lhs.score != rhs.score { return lhs.score > rhs.score }
-        let lhsTarget = lhs.task.planningTargetDate(calendar: calendar) ?? .distantFuture
-        let rhsTarget = rhs.task.planningTargetDate(calendar: calendar) ?? .distantFuture
+        let lhsTarget = targetDate(lhs.task) ?? .distantFuture
+        let rhsTarget = targetDate(rhs.task) ?? .distantFuture
         if lhsTarget != rhsTarget { return lhsTarget < rhsTarget }
         return lhs.task.createdAt < rhs.task.createdAt
     }

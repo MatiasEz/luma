@@ -13,6 +13,8 @@ struct QuickCaptureView: View {
     @Query(sort: \AcademicExam.updatedAt) private var exams: [AcademicExam]
 
     @State private var viewModel: QuickCaptureViewModel
+    @State private var saveError: String?
+    @State private var showsDetails = false
     @State private var manualMode: Bool
     @FocusState private var titleFocused: Bool
     private let startsWithScheduledDate: Bool
@@ -74,6 +76,7 @@ struct QuickCaptureView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 18) {
                     draftEditor
+                    if let saveError { Label(saveError, systemImage: "exclamationmark.triangle").foregroundStyle(LumaPalette.terracotta) }
                 }
                     .padding(.horizontal, 26)
                     .padding(.bottom, 20)
@@ -94,6 +97,7 @@ struct QuickCaptureView: View {
             }
             .padding(26)
         }
+        .frame(height: showsDetails ? 650 : 400)
         .background(LumaBackground())
         .environment(\.colorScheme, .light)
         .onAppear {
@@ -476,6 +480,29 @@ struct QuickCaptureView: View {
                 .foregroundStyle(LumaPalette.ink)
                 .focused($titleFocused)
 
+            HStack(spacing: 16) {
+                Toggle("Tiene fecha de entrega", isOn: Binding(
+                    get: { viewModel.draft.dueDate != nil },
+                    set: { viewModel.draft.dueDate = $0 ? (.now.addingTimeInterval(86_400)) : nil }
+                ))
+
+                if viewModel.draft.dueDate != nil {
+                    DatePicker(
+                        "Entrega",
+                        selection: Binding(get: { viewModel.draft.dueDate ?? .now }, set: { viewModel.draft.dueDate = $0 }),
+                        displayedComponents: [.date]
+                    )
+                    .labelsHidden()
+                }
+                Spacer()
+            }
+
+
+
+            Stepper("Duración total: \(viewModel.draft.estimatedMinutes) min", value: $viewModel.draft.estimatedMinutes, in: 5 ... 1_800, step: 5)
+
+            DisclosureGroup("Más detalles · área, energía y horario", isExpanded: $showsDetails) {
+                VStack(alignment: .leading, spacing: 16) {
             HStack(spacing: 12) {
                 Picker("Área", selection: $viewModel.draft.area) {
                     ForEach(LifeArea.allCases) { area in
@@ -494,23 +521,6 @@ struct QuickCaptureView: View {
                         Text(impact.title).tag(impact)
                     }
                 }
-            }
-
-            HStack(spacing: 16) {
-                Toggle("Tiene fecha de entrega", isOn: Binding(
-                    get: { viewModel.draft.dueDate != nil },
-                    set: { viewModel.draft.dueDate = $0 ? (.now.addingTimeInterval(86_400)) : nil }
-                ))
-
-                if viewModel.draft.dueDate != nil {
-                    DatePicker(
-                        "Entrega",
-                        selection: Binding(get: { viewModel.draft.dueDate ?? .now }, set: { viewModel.draft.dueDate = $0 }),
-                        displayedComponents: [.date]
-                    )
-                    .labelsHidden()
-                }
-                Spacer()
             }
 
             HStack(spacing: 16) {
@@ -537,10 +547,6 @@ struct QuickCaptureView: View {
 
                 Spacer()
             }
-
-
-            Stepper("Duración total: \(viewModel.draft.estimatedMinutes) min", value: $viewModel.draft.estimatedMinutes, in: 5 ... 1_800, step: 5)
-
             if viewModel.draft.area == .university {
                 AcademicTaskFields(
                     subjects: activeSubjects,
@@ -553,6 +559,16 @@ struct QuickCaptureView: View {
                 tasks: tasks,
                 selectedTaskID: $viewModel.draft.unlocksTaskID
             )
+                    Toggle("Ponderación en la nota", isOn: Binding(
+                        get: { viewModel.draft.academicWeight != nil },
+                        set: { viewModel.draft.academicWeight = $0 ? 20 : nil }))
+                    if viewModel.draft.academicWeight != nil {
+                        Stepper("Vale \(Int(viewModel.draft.academicWeight ?? 0))%", value: Binding(
+                            get: { viewModel.draft.academicWeight ?? 20 }, set: { viewModel.draft.academicWeight = $0 }), in: 0...100, step: 5)
+                    }
+                }.padding(.top, 12)
+            }
+
         }
         .padding(16)
         .background(Color.white.opacity(0.52), in: RoundedRectangle(cornerRadius: 16))
@@ -571,7 +587,7 @@ struct QuickCaptureView: View {
             estimatedMinutes: viewModel.draft.estimatedMinutes,
             energy: viewModel.draft.energy,
             impact: viewModel.draft.impact,
-            academicWeight: nil,
+            academicWeight: viewModel.draft.academicWeight,
             academicSubjectID: viewModel.draft.area == .university ? viewModel.draft.academicSubjectID : nil,
             subjectGradeItemID: nil,
             grade: nil,
@@ -580,9 +596,15 @@ struct QuickCaptureView: View {
             notes: viewModel.draft.notes
         )
         modelContext.insert(task)
-        try? modelContext.save()
-        try? calendarService.syncTask(task)
-        dismiss()
+        do {
+            try modelContext.save()
+            try? calendarService.syncTask(task)
+            appState.refreshPlan()
+            dismiss()
+        } catch {
+            modelContext.delete(task)
+            saveError = "No pude guardar el pendiente. Tu texto sigue acá; intentá de nuevo."
+        }
     }
 
     private func interpret() async {

@@ -164,52 +164,33 @@ struct ExamsView: View {
         appState.refreshPlan()
     }
 
-    private func saveExam(
-        _ draft: AcademicExam,
-        generatedTopics: [StudyTopic],
-        sourceFileName: String
-    ) {
-        let savedExam: AcademicExam
-        var tasksAvailableForGeneration = tasks
-
-        if let existing = viewModel.editingExam {
-            let pendingStudyTasks = tasks.filter {
-                $0.sourceID == existing.id
-                    && $0.academicSourceType == .examStudy
-                    && !$0.isCompleted
+    private func saveExam(_ draft: AcademicExam, generatedTopics: [StudyTopic], sourceFileName: String) throws {
+        let saved = viewModel.editingExam ?? draft
+        if viewModel.editingExam == nil { modelContext.insert(saved) }
+        saved.title = draft.title
+        saved.subjectID = draft.subjectID
+        saved.date = draft.date
+        saved.topicsRaw = draft.topicsRaw
+        saved.importance = draft.importance
+        saved.preparationMinutes = draft.preparationMinutes
+        saved.preparationStartDate = draft.preparationStartDate
+        saved.preparationEnabled = draft.preparationEnabled
+        saved.academicWeight = draft.academicWeight
+        saved.updatedAt = .now
+        if saved.shouldPrepare {
+            if !generatedTopics.isEmpty {
+                AcademicPlanningService().materializeGeneratedExamStudy(exam: saved, topics: generatedTopics,
+                    sourceFileName: sourceFileName, tasks: tasks, in: modelContext)
             }
-            let removedIDs = Set(pendingStudyTasks.map(\.id))
-            for task in pendingStudyTasks { modelContext.delete(task) }
-            tasksAvailableForGeneration.removeAll { removedIDs.contains($0.id) }
-
-            existing.title = draft.title
-            existing.subjectID = draft.subjectID
-            existing.date = draft.date
-            existing.topicsRaw = draft.topicsRaw
-            existing.importance = draft.importance
-            existing.preparationMinutes = draft.preparationMinutes
-            existing.updatedAt = .now
-            savedExam = existing
-
-            #if DEBUG
-            print("✏️ [EXAMEN] Actualizado | nombre=\(existing.title) | tareas pendientes reemplazadas=\(pendingStudyTasks.count)")
-            #endif
+            AcademicPlanningService().materialize(routines: [], exams: [saved], tasks: tasks, dailyContext: nil, in: modelContext, saveChanges: false)
         } else {
-            modelContext.insert(draft)
-            savedExam = draft
+            for task in tasks where task.sourceID == saved.id && !task.isCompleted {
+                var details = task.planningDetails; details.isRetired = true
+                task.planningDetails = details; task.touch()
+            }
         }
-
-        if !generatedTopics.isEmpty {
-            AcademicPlanningService().materializeGeneratedExamStudy(
-                exam: savedExam,
-                topics: generatedTopics,
-                sourceFileName: sourceFileName,
-                tasks: tasksAvailableForGeneration,
-                in: modelContext
-            )
-        }
-        try? modelContext.save()
-        materialize()
+        try modelContext.save()
+        appState.refreshPlan()
     }
 
     private func daysLabel(until date: Date) -> String {
@@ -218,21 +199,29 @@ struct ExamsView: View {
     }
 }
 
-private struct ExamEditorView: View {
+struct ExamEditorView: View {
+    @Environment(\.modelContext) private var modelContext
+    @State private var newSubjectName = ""
+    @State private var createsSubject = false
+    @State private var editedPreparationStart = false
+    @State private var saveError: String?
     @Environment(\.dismiss) private var dismiss
     @Query(sort: \AcademicSubject.name) private var subjects: [AcademicSubject]
     let exam: AcademicExam?
     @State private var viewModel: ExamEditorViewModel
     @State private var expandedUnitIDs: Set<UUID> = []
-    let onSave: (AcademicExam, [StudyTopic], String) -> Void
+    let onSave: (AcademicExam, [StudyTopic], String) throws -> Void
 
     init(
         exam: AcademicExam?,
-        onSave: @escaping (AcademicExam, [StudyTopic], String) -> Void
+        initialDate: Date? = nil,
+        onSave: @escaping (AcademicExam, [StudyTopic], String) throws -> Void
     ) {
         self.exam = exam
         self.onSave = onSave
-        _viewModel = State(initialValue: ExamEditorViewModel(exam: exam))
+        let model = ExamEditorViewModel(exam: exam)
+        if let initialDate, exam == nil { model.date = initialDate; model.preparationStartDate = min(initialDate, max(Calendar.current.startOfDay(for: .now), Calendar.current.date(byAdding: .day, value: -14, to: initialDate) ?? initialDate)) }
+        _viewModel = State(initialValue: model)
     }
 
     private var selectedSubject: AcademicSubject? {
@@ -247,6 +236,8 @@ private struct ExamEditorView: View {
                 .foregroundStyle(LumaPalette.ink)
             Text("El temario es opcional. Si elegís temas, Luma los convierte en tareas y los reparte antes de la fecha.")
                 .font(.subheadline).foregroundStyle(LumaPalette.secondaryInk)
+            ScrollView {
+            VStack(alignment: .leading, spacing: 18) {
             TextField("Ej. Parcial de Parasitología", text: $viewModel.title).textFieldStyle(.roundedBorder)
             Picker("Materia", selection: $viewModel.subjectID) {
                 Text("Elegí una materia").tag(UUID?.none)
@@ -258,22 +249,43 @@ private struct ExamEditorView: View {
                     expandedUnitIDs = []
                 }
             }
+            Toggle("Crear una materia nueva", isOn: $createsSubject)
+            if createsSubject { TextField("Nombre de la materia", text: $newSubjectName).textFieldStyle(.roundedBorder) }
             HStack {
                 DatePicker("Fecha", selection: $viewModel.date, displayedComponents: [.date])
                 Picker("Importancia", selection: $viewModel.importance) {
                     ForEach(ExamImportance.allCases) { Text($0.title).tag($0) }
                 }
-                Stepper("\(viewModel.preparationMinutes / 60) h aprox.", value: $viewModel.preparationMinutes, in: 100 ... 1200, step: 30)
+
             }
 
-            examTopicsSection
-
-            Spacer()
+            DisclosureGroup("Ponderación en la nota · opcional") {
+                Toggle("Cuenta para la nota", isOn: Binding(get: { viewModel.academicWeight != nil }, set: { viewModel.academicWeight = $0 ? 20 : nil }))
+                if viewModel.academicWeight != nil {
+                    Stepper("Vale \(Int(viewModel.academicWeight ?? 0))%", value: Binding(get: { viewModel.academicWeight ?? 20 }, set: { viewModel.academicWeight = $0 }), in: 0...100, step: 5)
+                }
+            }
+            Toggle("Ayudame a preparar este examen", isOn: $viewModel.preparationEnabled)
+            if viewModel.preparationEnabled {
+                DatePicker("Empezar a preparar", selection: Binding(get: { viewModel.preparationStartDate }, set: { viewModel.preparationStartDate = $0; editedPreparationStart = true }), in: ...viewModel.date, displayedComponents: [.date])
+                Stepper("Preparación estimada: \(viewModel.preparationMinutes) min", value: $viewModel.preparationMinutes, in: 30...3600, step: 30)
+                Text("Podés cambiar el inicio y el tiempo. Sin temario, usamos pasos generales; después los ajustamos con vos.")
+                    .font(.caption).foregroundStyle(LumaPalette.secondaryInk)
+                examTopicsSection
+            }
+            }
+            .padding(2)
+            }
+            if let saveError { Text(saveError).font(.caption).foregroundStyle(LumaPalette.terracotta) }
             HStack {
                 Spacer()
                 Button("Cancelar") { dismiss() }.buttonStyle(.bordered)
                 Button(saveButtonTitle) {
-                    guard let subject = selectedSubject else { return }
+                    let subject: AcademicSubject
+                    if createsSubject {
+                        subject = AcademicSubject(name: newSubjectName.trimmingCharacters(in: .whitespacesAndNewlines))
+                        modelContext.insert(subject)
+                    } else if let selectedSubject { subject = selectedSubject } else { return }
                     let selectedTopics = viewModel.topicTitles(for: subject)
                     let exam = AcademicExam(
                         id: self.exam?.id ?? UUID(),
@@ -290,20 +302,33 @@ private struct ExamEditorView: View {
                     #if DEBUG
                     print("📝 [EXAMEN] Confirmado | nombre=\(exam.title) | materia=\(subject.name) | temas=\(selectedTopics.joined(separator: " | ")) | preparación=\(exam.preparationMinutes)m")
                     #endif
-                    onSave(
+                    exam.preparationStartDate = viewModel.preparationStartDate
+                    exam.preparationEnabled = viewModel.preparationEnabled
+                    exam.academicWeight = viewModel.academicWeight
+                    do {
+                    try onSave(
                         exam,
                         viewModel.topicsForGeneratedPlan(subject: subject),
                         subject.syllabusSourceFileName
                     )
                     dismiss()
+                    } catch {
+                        modelContext.rollback()
+                        saveError = "No pude guardar el examen. Conservé lo que escribiste para que puedas reintentar."
+                    }
                 }
                 .buttonStyle(.borderedProminent).tint(LumaPalette.indigo)
-                .disabled(!viewModel.canSave(subjects: subjects))
+                .disabled(createsSubject ? (newSubjectName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || viewModel.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty) : !viewModel.canSave(subjects: subjects))
             }
         }
         .padding(26)
         .frame(width: 760, height: 700)
         .background(LumaBackground())
+        .onChange(of: viewModel.date) { _, date in
+            if !editedPreparationStart && exam == nil {
+                viewModel.preparationStartDate = min(date, max(Calendar.current.startOfDay(for: .now), Calendar.current.date(byAdding: .day, value: -14, to: date) ?? date))
+            } else if viewModel.preparationStartDate > date { viewModel.preparationStartDate = date }
+        }
         .onAppear {
             if let selectedSubject {
                 viewModel.configureExistingTopics(for: selectedSubject)

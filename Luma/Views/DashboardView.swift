@@ -193,6 +193,7 @@ struct DashboardView: View {
                     planContent(preference: $appState.energyPreference)
                     if showsDynamicAgenda { agendaSection }
                     planInsights
+                    PlanAdjustmentView(tasks: tasks, sessions: focusSessions, planner: planner, preferredAreas: profiles.first?.selectedAreas ?? [])
                 }
                 .frame(maxWidth: 920, alignment: .leading)
                 .padding(.horizontal, geometry.size.width < 600 ? 20 : 32)
@@ -446,7 +447,7 @@ struct DashboardView: View {
     }
 
     private var budgetBreakdown: some View {
-        let workMinutes = recommendations.reduce(0) { $0 + $1.suggestedMinutes }
+        let workMinutes = appState.workBlocks(on: .now).filter { $0.status != .completed }.reduce(0) { $0 + $1.minutes }
         let restMinutes = viewModel.restRecommendation?.suggestedMinutes ?? 0
         return Text(viewModel.hasPreparedPresentation
             ? "\(workMinutes) min de tareas + \(restMinutes) min de descanso"
@@ -1566,7 +1567,7 @@ struct DashboardView: View {
         try? modelContext.save()
         try? calendarService.syncTask(task)
         appState.refreshPlan()
-        viewModel.refreshPresentation(tasks: tasks, planner: planner, appState: appState)
+        viewModel.refreshPresentation(tasks: tasks, planner: planner, appState: appState, busyBlocks: calendarService.busyBlocks())
         if viewModel.scheduledOutsidePlan.isEmpty { moveTasksPresented = false }
     }
 
@@ -1588,7 +1589,7 @@ struct DashboardView: View {
             now: now
         ) {
             if !viewModel.hasPreparedPresentation {
-                viewModel.refreshPresentation(tasks: tasks, planner: planner, appState: appState)
+                viewModel.refreshPresentation(tasks: tasks, planner: planner, appState: appState, busyBlocks: calendarService.busyBlocks())
             }
             return
         }
@@ -1617,14 +1618,15 @@ struct DashboardView: View {
             in: modelContext,
             now: now
         )
+        let currentTasks = (try? modelContext.fetch(FetchDescriptor<LumaTask>())) ?? tasks
         let update = appState.prepareDailyPlan(
-            from: tasks,
+            from: currentTasks,
             planner: planner,
             inputFingerprint: planningInputFingerprint,
             now: now
         )
         appState.prepareDailyAgenda(
-            from: tasks,
+            from: currentTasks,
             planner: planner,
             scheduler: scheduler,
             now: now,
@@ -1632,7 +1634,7 @@ struct DashboardView: View {
             preferredStartMinuteOfDay: preferredAgendaStart,
             busyBlocks: planningBusyBlocks(for: now)
         )
-        viewModel.refreshPresentation(tasks: tasks, planner: planner, appState: appState)
+        viewModel.refreshPresentation(tasks: currentTasks, planner: planner, appState: appState, busyBlocks: calendarService.busyBlocks())
         appState.markDashboardPrepared(fingerprint: preparationFingerprint, now: now)
         Task { await notificationService.scheduleAgenda(appState.dailyAgenda, tasks: tasks, now: now) }
         guard update.rolledOver else { return }
@@ -1709,7 +1711,7 @@ struct DashboardView: View {
         modelContext.insert(LumaReplanRecord(proposal: proposal))
         try? modelContext.save()
         withAnimation(.easeInOut(duration: 0.2)) {
-            viewModel.refreshPresentation(tasks: tasks, planner: planner, appState: appState)
+            viewModel.refreshPresentation(tasks: tasks, planner: planner, appState: appState, busyBlocks: calendarService.busyBlocks())
         }
         appState.markDashboardPrepared(fingerprint: taskFingerprint, now: proposal.day)
         appState.coachMessage = appState.pendingReplanCoachMessage.isEmpty
@@ -1731,7 +1733,7 @@ struct DashboardView: View {
             appState.restoreReplan(proposal)
             try? modelContext.save()
             withAnimation(.easeInOut(duration: 0.2)) {
-                viewModel.refreshPresentation(tasks: tasks, planner: planner, appState: appState)
+                viewModel.refreshPresentation(tasks: tasks, planner: planner, appState: appState, busyBlocks: calendarService.busyBlocks())
             }
             appState.markDashboardPrepared(fingerprint: taskFingerprint, now: proposal.day)
             Task { await notificationService.scheduleAgenda(appState.dailyAgenda, tasks: tasks) }
@@ -2212,6 +2214,7 @@ private struct PriorityCard: View {
             return
         }
         let previousPlan = appState.dailyPlan
+        let previousSharedPlan = appState.sharedPlan
         let previousTask = LumaTaskSnapshot(task: task)
         let eventID = UUID()
         let completedAt = Date.now
@@ -2226,9 +2229,17 @@ private struct PriorityCard: View {
                 task.markCompleted()
             }
         }
+        let recorded = FocusSession(id: eventID, taskID: task.id, taskTitle: task.title, area: task.area,
+            plannedMinutes: recommendation.suggestedMinutes, actualMinutes: recommendation.suggestedMinutes,
+            startedAt: completedAt.addingTimeInterval(-Double(recommendation.suggestedMinutes * 60)), endedAt: completedAt,
+            energyPreference: appState.energyPreference, completedTask: task.isCompleted,
+            ignoredFromLearning: !appState.learningEnabled || task.academicSourceType == .rest,
+            origin: task.academicSourceType == .rest ? .rest : .manual)
+        modelContext.insert(recorded)
         do {
             try modelContext.save()
         } catch {
+            modelContext.delete(recorded)
             restoreProgress(of: task, from: previousTask)
             completionSaveFailed = true
             return
@@ -2242,12 +2253,13 @@ private struct PriorityCard: View {
         if task.academicSourceType == .rest {
             appState.finishRest(minutes: recommendation.suggestedMinutes)
         }
-        appState.finishPlannedBlock(for: task.id)
+        appState.finishPlannedBlock(for: task.id, workedMinutes: recommendation.suggestedMinutes, taskCompleted: task.isCompleted)
         try? calendarService.syncTask(task)
         appState.registerUndo(message: isProgressBlock ? "Avance registrado" : "Tarea completada") {
             let currentTask = LumaTaskSnapshot(task: task)
             restoreProgress(of: task, from: previousTask)
             task.touch()
+            modelContext.delete(recorded)
             do {
                 try modelContext.save()
             } catch {
@@ -2255,8 +2267,10 @@ private struct PriorityCard: View {
                 completionSaveFailed = true
                 return
             }
+            CloudSyncService.queueDeletion(table: "focus_sessions", id: eventID)
             _ = appState.undoTimeSpent(eventID: eventID, now: completedAt)
             appState.restoreDailyPlan(previousPlan)
+            appState.restoreSharedPlan(previousSharedPlan)
             try? calendarService.syncTask(task)
         }
     }

@@ -382,22 +382,28 @@ struct InsightsView: View {
 
     private func ignoreCurrentWeek() {
         let start = Calendar.current.date(byAdding: .day, value: -7, to: .now) ?? .distantPast
-        sessions.filter { $0.endedAt >= start }.forEach { $0.ignoredFromLearning = true }
+        sessions.filter { $0.endedAt >= start }.forEach { $0.ignoredFromLearning = true; $0.updatedAt = .now }
         try? modelContext.save()
         aiSummary = nil
         appState.refreshPlan()
     }
 
     private func restoreIgnoredSessions() {
-        sessions.forEach { $0.ignoredFromLearning = false }
+        sessions.forEach { $0.ignoredFromLearning = false; $0.updatedAt = .now }
         try? modelContext.save()
         aiSummary = nil
         appState.refreshPlan()
     }
 
     private func deleteHistory() {
-        sessions.forEach(modelContext.delete)
-        try? modelContext.save()
+        let ids = sessions.map(\.id)
+        sessions.forEach { modelContext.delete($0) }
+        do { try modelContext.save() } catch {
+            modelContext.rollback()
+            aiSummary = "No pude borrar el historial. Conservé las sesiones para que puedas reintentar."
+            return
+        }
+        ids.forEach { CloudSyncService.queueDeletion(table: "focus_sessions", id: $0) }
         aiSummary = nil
         appState.preferredBlockOverrideMinutes = 0
         appState.refreshPlan()

@@ -50,7 +50,7 @@ final class BehaviorLearningTests: XCTestCase {
         let task = LumaTask(
             title: "Preparar entrega",
             area: .university,
-            deadline: setup.now.addingTimeInterval(2 * 86400),
+            dueDate: setup.now.addingTimeInterval(2 * 86400),
             estimatedMinutes: 90,
             energy: .high,
             impact: .grade

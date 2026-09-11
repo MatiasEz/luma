@@ -20,6 +20,9 @@ enum LumaChatActionKind: String, Equatable {
     case renameTask
     case changeDeadline
     case changeDuration
+    case changeDueDate
+    case prioritizeTask
+    case rememberPreference
 }
 
 struct LumaChatSuggestedAction: Identifiable, Equatable {
@@ -62,6 +65,23 @@ enum LumaChatTextCleaner {
 
 @MainActor
 enum LumaAssistantContextBuilder {
+    static func relevantTasks(_ tasks: [LumaTask], question: String, recommendations: [PlanRecommendation]) -> [LumaTask] {
+        let query = question.folding(options: [.diacriticInsensitive, .caseInsensitive], locale: .current)
+        let words = Set(query.split(whereSeparator: { !$0.isLetter && !$0.isNumber }).map(String.init).filter { $0.count >= 3 })
+        let planned = Set(recommendations.map(\.id))
+        func relevance(_ task: LumaTask) -> Int {
+            let title = task.title.folding(options: [.diacriticInsensitive, .caseInsensitive], locale: .current)
+            let tokens = Set(title.split(whereSeparator: { !$0.isLetter && !$0.isNumber }).map(String.init))
+            return words.intersection(tokens).count * 100 + (query.contains(title) ? 1000 : 0) + (planned.contains(task.id) ? 10 : 0)
+        }
+        return tasks.filter { $0.planningDetails.isRetired != true }.sorted {
+            let lhs = relevance($0), rhs = relevance($1)
+            if lhs != rhs { return lhs > rhs }
+            if $0.isCompleted != $1.isCompleted { return !$0.isCompleted }
+            return ($0.dueDate ?? $0.deadline ?? .distantFuture) < ($1.dueDate ?? $1.deadline ?? .distantFuture)
+        }
+    }
+
     static func makeContext(
         tasks: [LumaTask],
         subjects: [AcademicSubject] = [],
@@ -73,6 +93,8 @@ enum LumaAssistantContextBuilder {
         workload: WorkloadLevel,
         profile: LumaProfile? = nil,
         remainingAvailableMinutes: Int? = nil,
+        question: String = "",
+        rememberedPreferences: [String] = [],
         now: Date = .now
     ) -> String {
         let calendar = Calendar.current
@@ -96,18 +118,10 @@ enum LumaAssistantContextBuilder {
                 case (.none, .none): $0.createdAt < $1.createdAt
                 }
             }
-        let relevantTasks = tasks
-            .filter { !$0.isCompleted }
-            .sorted {
-                switch ($0.deadline, $1.deadline) {
-                case let (left?, right?): left < right
-                case (.some, .none): true
-                case (.none, .some): false
-                case (.none, .none): $0.createdAt < $1.createdAt
-                }
-            }
+        let relevantTasks = relevantTasks(tasks, question: question, recommendations: recommendations)
         let taskLines = relevantTasks.prefix(40).map { task in
-            let deadline = task.deadline.map(dateFormatter.string(from:)) ?? "sin fecha"
+            let deadline = task.dueDate.map(dateFormatter.string(from:)) ?? "sin fecha de entrega"
+            let scheduled = task.deadline.map { "\(dateFormatter.string(from: $0)) \(timeFormatter.string(from: $0))" } ?? "sin horario elegido"
             let subject = task.academicSubjectID
                 .flatMap { subjectNamesByID[$0] }
                 .map { " · materia \($0)" } ?? ""
@@ -117,7 +131,7 @@ enum LumaAssistantContextBuilder {
                 ?? (task.unlocksAnotherTask ? " · desbloquea otra tarea" : "")
             let blockerNames = TaskDependencyResolver.blockers(for: task.id, in: tasks).map(\.title)
             let blocked = blockerNames.isEmpty ? "" : " · BLOQUEADA por \(blockerNames.joined(separator: ", "))"
-            return "- id=\(task.id.uuidString) · \(task.title) · \(task.area.title)\(subject) · vence \(deadline) · duración estimada \(task.estimatedMinutes) min · quedan \(task.remainingEstimatedMinutes) min · energía \(task.energy.title.lowercased()) · impacto \(task.impact.title.lowercased()) · postergada \(task.postponementCount) veces\(unlock)\(blocked)"
+            return "- id=\(task.id.uuidString) · \(task.title) · \(task.area.title)\(subject) · entrega \(deadline) · programada \(scheduled) · duración estimada \(task.estimatedMinutes) min · quedan \(task.remainingEstimatedMinutes) min · energía \(task.energy.title.lowercased()) · impacto \(task.impact.title.lowercased()) · postergada \(task.postponementCount) veces\(unlock)\(blocked)"
         }.joined(separator: "\n")
 
         let subjectLines = activeSubjects.map { subject in
@@ -170,6 +184,9 @@ enum LumaAssistantContextBuilder {
         let energyPeak = profile?.energyPeak.title.lowercased() ?? "sin definir"
 
         return """
+        Preferencias que la usuaria confirmó: \(rememberedPreferences.joined(separator: "; "))
+        Las fechas de entrega y los horarios de trabajo son datos distintos. Si faltan datos, pedilos; no inventes temas ni compromisos.
+
         Fecha y hora local: \(dateFormatter.string(from: now)) \(timeFormatter.string(from: now))
         Energía declarada: \(energyPreference.title)
         Tiempo que queda disponible hoy: \(remainingAvailableMinutes.map(durationTitle) ?? "sin confirmar")

@@ -24,6 +24,9 @@ struct SettingsView: View {
     @Query(sort: \DailyPlanningContext.updatedAt) private var dailyContexts: [DailyPlanningContext]
 
     @State private var viewModel = SettingsViewModel()
+    @State private var pendingBackup: Data?
+    @State private var backupPreview: LumaBackupPayload?
+    @State private var confirmsRestore = false
 
     private var backupDocument: LumaBackupDocument {
         get { viewModel.backupDocument }
@@ -59,6 +62,12 @@ struct SettingsView: View {
         }
         .padding(22)
         .background(LumaBackground())
+        .confirmationDialog("Restaurar respaldo", isPresented: $confirmsRestore, titleVisibility: .visible) {
+            Button("Agregar datos del respaldo") { restorePendingBackup() }
+            Button("Cancelar", role: .cancel) { pendingBackup = nil; backupPreview = nil }
+        } message: {
+            Text("Este respaldo contiene \(backupPreview?.tasks.count ?? 0) tareas, \(backupPreview?.subjects?.count ?? 0) materias y \(backupPreview?.exams?.count ?? 0) exámenes. Conservaremos los registros que ya tenés. \(tasks.isEmpty ? "También recuperaremos el plan y tus preferencias." : "Tu plan y preferencias actuales se mantienen.")")
+        }
         .fileExporter(
             isPresented: Binding(
                 get: { viewModel.isExporting },
@@ -469,7 +478,10 @@ struct SettingsView: View {
                 sessions: sessions,
                 studyGuides: studyGuides,
                 subjects: subjects,
-                subjectGradeItems: subjectGradeItems
+                subjectGradeItems: subjectGradeItems,
+                classMeetings: classMeetings, routines: routines, exams: exams, dailyContexts: dailyContexts,
+                profiles: profiles, messages: chatMessages, replans: replanRecords,
+                preferences: BackupService.preferences()
             )
             isExporting = true
         } catch {
@@ -482,20 +494,29 @@ struct SettingsView: View {
             let url = try result.get()
             let accessing = url.startAccessingSecurityScopedResource()
             defer { if accessing { url.stopAccessingSecurityScopedResource() } }
-            let restored = try BackupService.restore(
-                data: Data(contentsOf: url),
-                existingTasks: tasks,
-                existingSessions: sessions,
-                existingStudyGuides: studyGuides,
-                existingSubjects: subjects,
-                existingSubjectGradeItems: subjectGradeItems,
-                context: modelContext
-            )
-            backupMessage = "Listo: \(restored.tasks) tareas, \(restored.sessions) sesiones y \(restored.subjects) materias agregadas."
-            appState.refreshPlan()
+            let data = try Data(contentsOf: url)
+            backupPreview = try BackupService.preview(data: data)
+            pendingBackup = data
+            confirmsRestore = true
         } catch {
             backupMessage = "Ese archivo no parece ser un respaldo válido de Luma."
         }
+    }
+
+    private func restorePendingBackup() {
+        guard let data = pendingBackup, let preview = backupPreview else { return }
+        let restorePreferences = tasks.isEmpty && subjects.isEmpty && exams.isEmpty
+        do {
+            let restored = try BackupService.restore(data: data, existingTasks: tasks, existingSessions: sessions,
+                existingStudyGuides: studyGuides, existingSubjects: subjects, existingSubjectGradeItems: subjectGradeItems, context: modelContext)
+            if restorePreferences, let preferences = preview.preferences {
+                try BackupService.restorePreferences(preferences)
+                appState.reloadPortablePreferences()
+            }
+            backupMessage = "Respaldo restaurado: \(restored.tasks) tareas y \(restored.subjects) materias agregadas, con su preparación e historial."
+            appState.refreshPlan()
+        } catch { backupMessage = "No se pudo restaurar. Tus datos anteriores se conservaron." }
+        pendingBackup = nil; backupPreview = nil
     }
 
     private var updateStatusText: String {
