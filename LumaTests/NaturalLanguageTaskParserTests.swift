@@ -2,6 +2,59 @@
 import XCTest
 
 final class NaturalLanguageTaskParserTests: XCTestCase {
+    func testAcademicCaptureUnderstandsTypoInWeeklyRoutine() {
+        let draft = AcademicCaptureParser().parse(
+            "Crea una tarea para todos klos domingos que sea dormir",
+            subjects: []
+        )
+
+        XCTAssertEqual(draft.kind, .routine)
+        XCTAssertEqual(draft.title, "Dormir")
+        XCTAssertEqual(draft.weekday, 1)
+        XCTAssertTrue(draft.isRecurring)
+    }
+
+    func testAcademicCaptureUnderstandsColloquialDateAndWordTime() throws {
+        let calendar = Calendar(identifier: .gregorian)
+        let now = try XCTUnwrap(calendar.date(from: DateComponents(year: 2026, month: 8, day: 30)))
+        let draft = AcademicCaptureParser(calendar: calendar).parse(
+            "Agendame llamar al veterinario mañana a las ocho de la noche",
+            subjects: [],
+            now: now
+        )
+
+        XCTAssertEqual(draft.title, "Llamar al veterinario")
+        XCTAssertEqual(draft.minuteOfDay, 20 * 60)
+        XCTAssertEqual(draft.date.map { calendar.component(.day, from: $0) }, 31)
+    }
+
+    func testAcademicCaptureUnderstandsPluralWeekdayAndNaturalDuration() {
+        let draft = AcademicCaptureParser().parse(
+            "Los martes repasar anatomía durante una hora y media",
+            subjects: []
+        )
+
+        XCTAssertEqual(draft.kind, .routine)
+        XCTAssertEqual(draft.title, "Repasar anatomía")
+        XCTAssertEqual(draft.weekday, 3)
+        XCTAssertEqual(draft.estimatedMinutes, 90)
+    }
+
+    func testAcademicCaptureUnderstandsNumericSpanishDate() throws {
+        let calendar = Calendar(identifier: .gregorian)
+        let now = try XCTUnwrap(calendar.date(from: DateComponents(year: 2026, month: 8, day: 30)))
+        let draft = AcademicCaptureParser(calendar: calendar).parse(
+            "El 12/9 rindo Parasitología sobre helmintos y protozoarios",
+            subjects: [],
+            now: now
+        )
+
+        XCTAssertEqual(draft.kind, .exam)
+        XCTAssertEqual(draft.date.map { calendar.component(.day, from: $0) }, 12)
+        XCTAssertEqual(draft.date.map { calendar.component(.month, from: $0) }, 9)
+        XCTAssertEqual(draft.topicsRaw, "helmintos, protozoarios")
+    }
+
     func testParsesAcademicTask() throws {
         let calendar = Calendar(identifier: .gregorian)
         let now = try XCTUnwrap(calendar.date(from: DateComponents(year: 2026, month: 8, day: 18)))

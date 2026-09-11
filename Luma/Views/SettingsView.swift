@@ -18,6 +18,10 @@ struct SettingsView: View {
     @Query(sort: \LumaReplanRecord.createdAt) private var replanRecords: [LumaReplanRecord]
     @Query(sort: \AcademicSubject.updatedAt) private var subjects: [AcademicSubject]
     @Query(sort: \SubjectGradeItem.updatedAt) private var subjectGradeItems: [SubjectGradeItem]
+    @Query(sort: \SubjectClassMeeting.updatedAt) private var classMeetings: [SubjectClassMeeting]
+    @Query(sort: \AcademicRoutine.updatedAt) private var routines: [AcademicRoutine]
+    @Query(sort: \AcademicExam.updatedAt) private var exams: [AcademicExam]
+    @Query(sort: \DailyPlanningContext.updatedAt) private var dailyContexts: [DailyPlanningContext]
 
     @State private var viewModel = SettingsViewModel()
 
@@ -42,6 +46,8 @@ struct SettingsView: View {
         TabView {
             generalPane
                 .tabItem { Label("Rutina", systemImage: "clock.badge.checkmark") }
+            InsightsView()
+                .tabItem { Label("Tu ritmo", systemImage: "brain.head.profile") }
             aiPane
                 .tabItem { Label("Funciones", systemImage: "sparkles") }
             cloudPane
@@ -77,16 +83,16 @@ struct SettingsView: View {
 
         return ScrollView {
             VStack(alignment: .leading, spacing: 18) {
-                paneHeader("Tu día", "La disponibilidad se decide para cada fecha desde el panel Hoy.")
+                paneHeader("Tu día", "La disponibilidad se decide para cada fecha desde Tu contexto en Hoy.")
 
                 VStack(alignment: .leading, spacing: 12) {
                     Label("Sin una semana rígida", systemImage: "calendar.day.timeline.left")
                         .font(.headline)
                         .foregroundStyle(LumaPalette.indigo)
-                    Text("Luma no repite automáticamente la hora de un día en los demás. Cada mañana podés elegir una opción rápida, marcar Día libre o crear varios bloques.")
+                    Text("Luma no repite automáticamente la disponibilidad de un día en los demás. Cada mañana podés indicar cuánto tiempo tenés, tu energía y el modo de planificación.")
                         .font(.subheadline)
                         .foregroundStyle(LumaPalette.secondaryInk)
-                    Text("Los bloques se cambian en Hoy → Ajustar disponibilidad.")
+                    Text("Podés cambiarlo en Hoy → Editar contexto.")
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(LumaPalette.sage)
                 }
@@ -131,7 +137,9 @@ struct SettingsView: View {
                     .foregroundStyle(LumaPalette.indigo)
                     .lumaCard(padding: 15)
             }
+            .lumaScrollContent()
         }
+        .lumaScrollSurface()
     }
 
     private var calendarPreferencesCard: some View {
@@ -173,7 +181,7 @@ struct SettingsView: View {
                 .toggleStyle(.switch)
                 .disabled(!calendarService.isEnabled)
 
-                Text("Las tareas se agregan como eventos de día completo. Los bloques del plan diario conservan su horario.")
+                Text("Las tareas con hora conservan su horario y duración. Las tareas antiguas sin hora se muestran como eventos de día completo.")
                     .font(.caption)
                     .foregroundStyle(LumaPalette.secondaryInk)
                     .fixedSize(horizontal: false, vertical: true)
@@ -281,7 +289,9 @@ struct SettingsView: View {
                 }
                 .font(.subheadline).foregroundStyle(LumaPalette.sage)
             }
+            .lumaScrollContent()
         }
+        .lumaScrollSurface()
     }
 
     private var dataPane: some View {
@@ -317,7 +327,9 @@ struct SettingsView: View {
                 Label("Luma no incluye contraseñas, calendarios ni archivos externos en el respaldo.", systemImage: "lock.shield.fill")
                     .font(.caption).foregroundStyle(LumaPalette.sage)
             }
+            .lumaScrollContent()
         }
+        .lumaScrollSurface()
     }
 
     private var cloudPane: some View {
@@ -355,7 +367,7 @@ struct SettingsView: View {
                 VStack(alignment: .leading, spacing: 12) {
                     Text("Qué se guarda").font(.headline).foregroundStyle(LumaPalette.ink)
                     Label("Pendientes, fechas y progreso", systemImage: "tray.full.fill")
-                    Label("Materias y porcentajes de evaluación", systemImage: "books.vertical.fill")
+                    Label("Materias y tareas asignadas", systemImage: "books.vertical.fill")
                     Label("Preferencias del onboarding", systemImage: "person.crop.circle.fill")
                     Label("Conversaciones y acciones confirmadas", systemImage: "bubble.left.fill")
                     Label("Historial de reacomodos aceptados", systemImage: "clock.arrow.circlepath")
@@ -374,7 +386,9 @@ struct SettingsView: View {
                 }
                 .lumaCard()
             }
+            .lumaScrollContent()
         }
+        .lumaScrollSurface()
     }
 
     private var aboutPane: some View {
@@ -414,7 +428,9 @@ struct SettingsView: View {
                 Button("Volver a mostrar la bienvenida") { appState.restartOnboarding() }
                     .buttonStyle(SoftButtonStyle(color: LumaPalette.secondaryInk))
             }
+            .lumaScrollContent()
         }
+        .lumaScrollSurface()
     }
 
     private func paneHeader(_ title: String, _ subtitle: String) -> some View {
@@ -511,6 +527,10 @@ struct SettingsView: View {
             replans: replanRecords,
             subjects: subjects,
             subjectGradeItems: subjectGradeItems,
+            classMeetings: classMeetings,
+            routines: routines,
+            exams: exams,
+            dailyContexts: dailyContexts,
             context: modelContext
         )
     }

@@ -2,6 +2,18 @@ import Foundation
 
 struct UserRhythmProfile: Equatable {
     static let minimumSessionCount = 5
+    static let empty = UserRhythmProfile(
+        sessionCount: 0,
+        totalMinutes: 0,
+        weeklySessionCount: 0,
+        weeklyMinutes: 0,
+        preferredBlockMinutes: 25,
+        bestStartHour: nil,
+        taskCompletionRate: 0,
+        estimationRatio: 1,
+        topArea: nil,
+        areaCompletionRates: [:]
+    )
 
     var sessionCount: Int
     var totalMinutes: Int

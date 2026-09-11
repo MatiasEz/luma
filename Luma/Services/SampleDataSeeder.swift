@@ -16,8 +16,7 @@ enum SampleDataSeeder {
                 deadline: calendar.date(byAdding: .day, value: 4, to: .now),
                 estimatedMinutes: 90,
                 energy: .high,
-                impact: .grade,
-                academicWeight: 25
+                impact: .grade
             ),
             LumaTask(
                 title: "Enviar cotización freelance",

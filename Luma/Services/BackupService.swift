@@ -36,6 +36,7 @@ struct LumaBackupPayload: Codable {
         var id: UUID
         var title: String
         var areaRaw: String
+        var dueDate: Date?
         var deadline: Date?
         var estimatedMinutes: Int
         var energyRaw: String
@@ -123,6 +124,7 @@ enum BackupService {
                     id: $0.id,
                     title: $0.title,
                     areaRaw: $0.areaRaw,
+                    dueDate: $0.dueDate,
                     deadline: $0.deadline,
                     estimatedMinutes: $0.estimatedMinutes,
                     energyRaw: $0.energyRaw,
@@ -236,6 +238,7 @@ enum BackupService {
                 id: record.id,
                 title: record.title,
                 area: LifeArea(rawValue: record.areaRaw) ?? .errands,
+                dueDate: record.dueDate,
                 deadline: record.deadline,
                 estimatedMinutes: record.estimatedMinutes,
                 energy: EnergyLevel(rawValue: record.energyRaw) ?? .medium,

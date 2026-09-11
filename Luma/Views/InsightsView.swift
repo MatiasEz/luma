@@ -44,8 +44,9 @@ struct InsightsView: View {
                 controls(appState: $appState)
             }
             .padding(30)
-            .frame(maxWidth: 980, alignment: .leading)
+            .lumaScrollContent()
         }
+        .lumaScrollSurface()
         .navigationTitle("Aprendizajes")
         .alert("¿Ignorar esta semana?", isPresented: Binding(
             get: { viewModel.ignoreWeekConfirmationPresented },

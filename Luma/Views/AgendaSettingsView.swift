@@ -5,13 +5,17 @@ struct AgendaSettingsView: View {
     @Environment(AppState.self) private var appState
     @Environment(NotificationService.self) private var notificationService
     @Environment(CalendarIntegrationService.self) private var calendarService
+    @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
     @Query(sort: \LumaTask.createdAt) private var tasks: [LumaTask]
     @Query(sort: \FocusSession.endedAt, order: .reverse) private var focusSessions: [FocusSession]
     @Query(sort: \AcademicSubject.name) private var subjects: [AcademicSubject]
-    @Query(sort: \SubjectGradeItem.createdAt) private var gradeItems: [SubjectGradeItem]
+    @Query(sort: \SubjectClassMeeting.updatedAt) private var classMeetings: [SubjectClassMeeting]
+    @Query(sort: \DailyPlanningContext.updatedAt) private var dailyContexts: [DailyPlanningContext]
 
     @State private var viewModel = AgendaSettingsViewModel()
+    @State private var loadedAvailableMinutes: Int?
+    @State private var saveFailed = false
 
     private var availabilityWindows: [AvailabilityWindow] {
         get { viewModel.availabilityWindows }
@@ -26,21 +30,27 @@ struct AgendaSettingsView: View {
     private let learningEngine = BehaviorLearningEngine()
     private let scheduler = DailyScheduler()
 
-    private var planner: TaskPlanner {
+    private func planner(availableMinutes: Int? = nil) -> TaskPlanner {
         let profile = learningEngine.profile(from: focusSessions)
+        let context = todayContext
         return TaskPlanner(
             rhythmProfile: appState.learningEnabled ? profile : nil,
             preferredBlockOverride: appState.preferredBlockOverride,
-            academicContexts: AcademicPriorityEngine.contexts(
-                subjects: subjects,
-                items: gradeItems,
-                tasks: tasks
-            )
+            availableMinutes: availableMinutes ?? appState.remainingAvailableMinutes(fallback: context?.availableMinutes ?? 120),
+            planningMode: context?.planningMode ?? .realistic,
+            classMeetings: classMeetings,
+            subjectNames: Dictionary(uniqueKeysWithValues: subjects.map { ($0.id, $0.name) }),
+            weeklyAvailability: appState.weeklyAvailability,
+            restCounts: context?.restCounts ?? true
         )
     }
 
+    private var todayContext: DailyPlanningContext? {
+        dailyContexts.first { Calendar.current.isDateInToday($0.day) }
+    }
+
     private var totalAvailableMinutes: Int {
-        min(480, viewModel.totalAvailableMinutes)
+        min(600, viewModel.totalAvailableMinutes)
     }
 
     var body: some View {
@@ -53,21 +63,28 @@ struct AgendaSettingsView: View {
                     energySection
                 }
                 .padding(26)
+                .lumaScrollContent()
             }
+            .lumaScrollSurface()
 
             footer
         }
         .background(LumaBackground())
+        .alert("No se pudo guardar la disponibilidad", isPresented: $saveFailed) {
+            Button("Aceptar", role: .cancel) {}
+        } message: {
+            Text("Tu tiempo no cambió. Podés volver a intentar guardarla.")
+        }
         .onAppear(perform: loadCurrentAgenda)
     }
 
     private var header: some View {
         HStack(alignment: .top) {
             VStack(alignment: .leading, spacing: 5) {
-                Text("Tu tiempo de hoy")
+                Text("El tiempo que te queda hoy")
                     .font(.title2.weight(.semibold))
                     .foregroundStyle(LumaPalette.ink)
-                Text("Hoy puede ser completamente distinto de ayer. Solo se usa para esta fecha.")
+                Text("Ajustá los bloques que todavía podés usar. El tiempo ya realizado sigue registrado.")
                     .font(.subheadline)
                     .foregroundStyle(LumaPalette.secondaryInk)
             }
@@ -127,7 +144,7 @@ struct AgendaSettingsView: View {
             }
 
             if calendarService.isAuthorized, calendarService.isEnabled {
-                Text("Los compromisos del calendario se descuentan de estos bloques antes de ubicar tareas.")
+                    Text("Las tareas evitan los compromisos del calendario. Tu tiempo neto disponible no se descuenta dos veces.")
                     .font(.caption)
                     .foregroundStyle(LumaPalette.secondaryInk)
             }
@@ -213,7 +230,27 @@ struct AgendaSettingsView: View {
         let agenda = appState.dailyAgenda.flatMap {
             Calendar.current.isDateInToday($0.day) ? $0 : nil
         }
-        viewModel.load(from: agenda, fallbackEnergy: appState.energyPreference)
+        viewModel.load(from: agenda, fallbackEnergy: todayContext?.energy ?? appState.energyPreference)
+        let remaining = appState.remainingAvailableMinutes(fallback: todayContext?.availableMinutes ?? 120)
+        fitAvailabilityWindows(to: remaining)
+        loadedAvailableMinutes = viewModel.totalAvailableMinutes
+    }
+
+    private func fitAvailabilityWindows(to remaining: Int) {
+        guard viewModel.totalAvailableMinutes != remaining else { return }
+        if availabilityWindows.isEmpty || viewModel.totalAvailableMinutes < remaining {
+            viewModel.setQuickAvailability(remaining, defaultStart: scheduler.defaultStartMinute())
+        } else {
+            var unassigned = remaining
+            availabilityWindows = availabilityWindows.compactMap { window in
+                let minutes = min(window.durationMinutes, unassigned)
+                guard minutes > 0 else { return nil }
+                unassigned -= minutes
+                var adjusted = window
+                adjusted.endMinuteOfDay = adjusted.startMinuteOfDay + minutes
+                return adjusted
+            }
+        }
     }
 
     private func setQuickAvailability(_ minutes: Int) {
@@ -277,15 +314,47 @@ struct AgendaSettingsView: View {
     }
 
     private func save() {
+        let context: DailyPlanningContext
+        if let existing = todayContext {
+            context = existing
+        } else {
+            context = DailyPlanningContext(day: .now)
+            modelContext.insert(context)
+        }
+        appState.ensureDailyTimeBudget(availableMinutes: context.availableMinutes)
+        let previousRemainingMinutes = appState.remainingAvailableMinutes(fallback: context.availableMinutes)
+        let changedTime = totalAvailableMinutes != (loadedAvailableMinutes ?? previousRemainingMinutes)
+        let minutesToSave = changedTime ? totalAvailableMinutes : previousRemainingMinutes
+        if !changedTime { fitAvailabilityWindows(to: minutesToSave) }
+        let previousEnergy = context.energy
+        let previousContextMinutes = context.availableMinutes
+        let previousUpdatedAt = context.updatedAt
+        context.energy = energyPreference
+        context.availableMinutes = minutesToSave
+        context.updatedAt = .now
+        do {
+            try modelContext.save()
+        } catch {
+            context.energy = previousEnergy
+            context.availableMinutes = previousContextMinutes
+            context.updatedAt = previousUpdatedAt
+            saveFailed = true
+            return
+        }
+        if minutesToSave != previousRemainingMinutes {
+            appState.setRemainingAvailableMinutes(minutesToSave)
+        }
+        let configuredPlanner = planner(availableMinutes: minutesToSave)
+        appState.replanDaily(from: tasks, planner: configuredPlanner, preference: energyPreference)
         appState.applyAgendaRequest(
             AgendaRequestDraft(
-                availableMinutes: totalAvailableMinutes,
+                availableMinutes: minutesToSave,
                 startMinuteOfDay: availabilityWindows.first?.startMinuteOfDay,
                 availabilityWindows: availabilityWindows,
                 energyPreference: energyPreference
             ),
             tasks: tasks,
-            planner: planner,
+            planner: configuredPlanner,
             scheduler: scheduler,
             busyBlocks: calendarService.busyBlocks()
         )

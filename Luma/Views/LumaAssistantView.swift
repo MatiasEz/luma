@@ -10,10 +10,11 @@ struct LumaAssistantView: View {
     @Environment(\.openSettings) private var openSettings
     @Query(sort: \LumaTask.createdAt) private var tasks: [LumaTask]
     @Query(sort: \AcademicSubject.name) private var subjects: [AcademicSubject]
-    @Query(sort: \SubjectGradeItem.createdAt) private var gradeItems: [SubjectGradeItem]
+    @Query(sort: \SubjectClassMeeting.updatedAt) private var classMeetings: [SubjectClassMeeting]
     @Query(sort: \FocusSession.endedAt, order: .reverse) private var focusSessions: [FocusSession]
     @Query(sort: \LumaProfile.createdAt) private var profiles: [LumaProfile]
     @Query(sort: \LumaChatRecord.createdAt) private var messages: [LumaChatRecord]
+    @Query(sort: \DailyPlanningContext.updatedAt) private var dailyContexts: [DailyPlanningContext]
 
     @State private var viewModel = LumaAssistantViewModel()
     @FocusState private var composerFocused: Bool
@@ -54,17 +55,23 @@ struct LumaAssistantView: View {
 
     private var planner: TaskPlanner {
         let rhythm = learningEngine.profile(from: focusSessions)
+        let context = todayContext
         return TaskPlanner(
             rhythmProfile: appState.learningEnabled ? rhythm : nil,
             preferredBlockOverride: appState.preferredBlockOverride,
             preferredAreas: Set(profiles.first?.selectedAreas ?? []),
             energyPeak: profiles.first?.energyPeak,
-            academicContexts: AcademicPriorityEngine.contexts(
-                subjects: subjects,
-                items: gradeItems,
-                tasks: tasks
-            )
+            availableMinutes: appState.remainingAvailableMinutes(fallback: context?.availableMinutes ?? 120),
+            planningMode: context?.planningMode ?? .realistic,
+            classMeetings: classMeetings,
+            subjectNames: Dictionary(uniqueKeysWithValues: subjects.map { ($0.id, $0.name) }),
+            weeklyAvailability: appState.weeklyAvailability,
+            restCounts: context?.restCounts ?? true
         )
+    }
+
+    private var todayContext: DailyPlanningContext? {
+        dailyContexts.first { Calendar.current.isDateInToday($0.day) }
     }
 
     private var recommendations: [PlanRecommendation] {
@@ -201,7 +208,9 @@ struct LumaAssistantView: View {
                     }
                 }
                 .padding(18)
+                .lumaScrollContent()
             }
+            .lumaScrollSurface()
             .onChange(of: messages.count) { _, _ in
                 if let last = messages.last {
                     withAnimation { proxy.scrollTo(last.id, anchor: .bottom) }
@@ -401,13 +410,14 @@ struct LumaAssistantView: View {
         let context = LumaAssistantContextBuilder.makeContext(
             tasks: tasks,
             subjects: subjects,
-            subjectGradeItems: gradeItems,
+            classMeetings: classMeetings,
             recommendations: recommendations,
             agenda: appState.dailyAgenda,
             commitments: calendarService.commitments,
             energyPreference: appState.energyPreference,
             workload: planner.workload(from: tasks),
-            profile: profiles.first
+            profile: profiles.first,
+            remainingAvailableMinutes: appState.remainingAvailableMinutes(fallback: todayContext?.availableMinutes ?? 120)
         )
         let evidence = LumaAssistantContextBuilder.makeEvidence(
             tasks: tasks,
@@ -415,7 +425,8 @@ struct LumaAssistantView: View {
             agenda: appState.dailyAgenda,
             commitments: calendarService.commitments,
             energyPreference: appState.energyPreference,
-            profile: profiles.first
+            profile: profiles.first,
+            remainingAvailableMinutes: appState.remainingAvailableMinutes(fallback: todayContext?.availableMinutes ?? 120)
         )
 
         Task {
@@ -514,16 +525,6 @@ struct LumaAssistantView: View {
                 of: date
             ) ?? date
             return validated
-        case .setGrade:
-            guard hasGradeIntent(question),
-                  let taskID = action.taskID,
-                  let value = action.numericValue,
-                  (0 ... 10).contains(value),
-                  tasks.contains(where: {
-                      $0.id == taskID && $0.academicSubjectID != nil && $0.subjectGradeItemID != nil
-                  })
-            else { return nil }
-            return action
         case .changeDuration:
             guard hasDurationIntent(question),
                   let taskID = action.taskID,
@@ -544,7 +545,6 @@ struct LumaAssistantView: View {
         case .replan: hasReplanIntent(question)
         case .renameTask: hasRenameIntent(question)
         case .changeDeadline: hasDeadlineIntent(question)
-        case .setGrade: hasGradeIntent(question)
         case .changeDuration: hasDurationIntent(question)
         case .startFocus, .completeTask: true
         }
@@ -577,13 +577,6 @@ struct LumaAssistantView: View {
         return [
             "mover", "move", "posterg", "pasar para", "cambiar la fecha", "cambia la fecha",
             "vence", "vencimiento", "para manana", "para el ",
-        ].contains(where: normalized.contains)
-    }
-
-    private func hasGradeIntent(_ text: String) -> Bool {
-        let normalized = normalizedIntent(text)
-        return [
-            "nota", "calificacion", "saque", "me pusieron", "cargar un", "poner un",
         ].contains(where: normalized.contains)
     }
 
@@ -625,13 +618,6 @@ struct LumaAssistantView: View {
         case .changeDeadline:
             return action.taskID.map { id in tasks.contains(where: { $0.id == id }) } == true
                 && action.dateValue != nil
-        case .setGrade:
-            guard let taskID = action.taskID,
-                  let value = action.numericValue,
-                  (0 ... 10).contains(value),
-                  let task = tasks.first(where: { $0.id == taskID })
-            else { return false }
-            return task.academicSubjectID != nil && task.subjectGradeItemID != nil
         case .changeDuration:
             return action.taskID.map { id in tasks.contains(where: { $0.id == id }) } == true
                 && action.durationMinutes.map { (5 ... 480).contains($0) } == true
@@ -650,7 +636,9 @@ struct LumaAssistantView: View {
                 currentAgenda: appState.dailyAgenda,
                 currentEnergy: appState.energyPreference,
                 proposedEnergy: action.energyPreference ?? appState.energyPreference,
+                currentAvailableMinutes: appState.remainingAvailableMinutes(fallback: todayContext?.availableMinutes ?? 120),
                 proposedAvailableMinutes: action.availableMinutes,
+                timeBudget: appState.dailyTimeBudget,
                 planner: planner,
                 scheduler: scheduler,
                 busyBlocks: calendarService.busyBlocks()
@@ -661,6 +649,28 @@ struct LumaAssistantView: View {
     }
 
     private func applyReplan(_ proposal: ReplanProposal) {
+        guard Calendar.current.isDateInToday(proposal.day) else {
+            replanProposal = nil
+            replanRecordID = nil
+            appState.coachMessage = "Este reacomodo es de ayer. Revisemos el plan de hoy."
+            return
+        }
+        let context: DailyPlanningContext
+        if let existing = todayContext {
+            context = existing
+        } else {
+            context = DailyPlanningContext(
+                day: proposal.day,
+                energy: proposal.beforeEnergy,
+                availableMinutes: proposal.beforeAvailableMinutes
+            )
+            modelContext.insert(context)
+        }
+        let previousContextEnergy = context.energy
+        let previousContextMinutes = context.availableMinutes
+        context.energy = proposal.afterEnergy
+        context.availableMinutes = proposal.afterAvailableMinutes
+        context.updatedAt = .now
         appState.applyReplan(proposal)
         modelContext.insert(LumaReplanRecord(proposal: proposal))
         if let replanRecordID,
@@ -674,7 +684,11 @@ struct LumaAssistantView: View {
         replanRecordID = nil
         Task { await notificationService.scheduleAgenda(appState.dailyAgenda, tasks: tasks) }
         appState.registerUndo(message: "Plan reacomodado") {
+            context.energy = previousContextEnergy
+            context.availableMinutes = previousContextMinutes
+            context.updatedAt = .now
             appState.restoreReplan(proposal)
+            try? modelContext.save()
             Task { await notificationService.scheduleAgenda(appState.dailyAgenda, tasks: tasks) }
         }
     }
@@ -739,28 +753,6 @@ struct LumaAssistantView: View {
                 appState.refreshPlan()
                 rebuildAgenda()
             }
-        case .setGrade:
-            guard let taskID = action.taskID,
-                  let value = action.numericValue,
-                  let task = tasks.first(where: { $0.id == taskID })
-            else { return }
-            let previousGrade = task.grade
-            let wasCompleted = task.isCompleted
-            task.grade = value
-            if !task.isCompleted { task.markCompleted() }
-            task.touch()
-            try? calendarService.syncTask(task)
-            appState.refreshPlan()
-            rebuildAgenda()
-            appState.registerUndo(message: "Calificación guardada") {
-                task.grade = previousGrade
-                if !wasCompleted { task.restore() }
-                task.touch()
-                try? modelContext.save()
-                try? calendarService.syncTask(task)
-                appState.refreshPlan()
-                rebuildAgenda()
-            }
         case .changeDuration:
             guard let taskID = action.taskID,
                   let duration = action.durationMinutes,
@@ -818,10 +810,6 @@ struct LumaAssistantView: View {
             let task = action.taskID.flatMap { id in tasks.first(where: { $0.id == id })?.title } ?? "la tarea elegida"
             let date = action.dateValue?.formatted(date: .long, time: .omitted) ?? "la nueva fecha"
             return "Mover “\(task)” al \(date) y actualizar su evento del calendario."
-        case .setGrade:
-            let task = action.taskID.flatMap { id in tasks.first(where: { $0.id == id })?.title } ?? "la evaluación"
-            let value = action.numericValue?.formatted(.number.precision(.fractionLength(0 ... 2))) ?? "la nota indicada"
-            return "Guardar \(value) / 10 en “\(task)” y recalcular la materia."
         case .changeDuration:
             let task = action.taskID.flatMap { id in tasks.first(where: { $0.id == id })?.title } ?? "la tarea elegida"
             return "Cambiar la duración estimada de “\(task)” a \(action.durationMinutes ?? 0) minutos."
@@ -836,7 +824,6 @@ struct LumaAssistantView: View {
             action.durationMinutes.map { "Iniciar \($0) min" } ?? "Iniciar sesión"
         case .completeTask: "Confirmar acción"
         case .changeDeadline: "Cambiar fecha"
-        case .setGrade: "Guardar nota"
         case .changeDuration: "Cambiar duración"
         }
     }
@@ -848,7 +835,6 @@ struct LumaAssistantView: View {
         case .completeTask: "checkmark.circle"
         case .renameTask: "pencil"
         case .changeDeadline: "calendar.badge.clock"
-        case .setGrade: "checkmark.seal"
         case .changeDuration: "timer"
         }
     }

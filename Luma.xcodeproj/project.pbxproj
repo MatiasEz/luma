@@ -12,10 +12,10 @@
 		05E3081EEDED6295D8600FBC /* GlobalShortcutController.swift in Sources */ = {isa = PBXBuildFile; fileRef = F9B144917CD30162039A2472 /* GlobalShortcutController.swift */; };
 		09387787485EA7459A2874E6 /* LumaAuthStorage.swift in Sources */ = {isa = PBXBuildFile; fileRef = DA376C6D56AB1625F25CA22D /* LumaAuthStorage.swift */; };
 		0A65087442E3E7CC0748EAE8 /* NotificationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9A4E5D4637E73344AD3D6264 /* NotificationService.swift */; };
-		10338C3F96ADBB8FD369AFF6 /* BalanceView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DCC9FF1AAA11ED6C31E67DA9 /* BalanceView.swift */; };
 		11BF98DF44375A88B939AACF /* LumaChat.swift in Sources */ = {isa = PBXBuildFile; fileRef = 76F120D64B9896B8E0E56D2A /* LumaChat.swift */; };
 		137816B417A865C97F935A00 /* MLXLMCommon in Frameworks */ = {isa = PBXBuildFile; productRef = 9299FB136B4E9E041E0C0CF9 /* MLXLMCommon */; };
 		169087B4DBAAC38415DD3E8A /* CaptureViewModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8001B760D418D2E6D37C472A /* CaptureViewModels.swift */; };
+		18B5FF5489893B08280EFB61 /* DailyTimeBudgetTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5E0FEFC5CDE715CE48570ABF /* DailyTimeBudgetTests.swift */; };
 		21E43C806344A6E19493D47A /* AcademicSubject.swift in Sources */ = {isa = PBXBuildFile; fileRef = B8FAB1D7CDD5248DA66C9234 /* AcademicSubject.swift */; };
 		23AE47B738853110F72C0580 /* MLX in Frameworks */ = {isa = PBXBuildFile; productRef = 709309F7A7414259AE51EFDE /* MLX */; };
 		240EA3743A9CE31D36F69A97 /* CalendarIntegrationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = CFB20678E2F979B729393E1A /* CalendarIntegrationService.swift */; };
@@ -26,6 +26,7 @@
 		2EA9D4176B03D8103BA04F41 /* LumaStyle.swift in Sources */ = {isa = PBXBuildFile; fileRef = E8F410A64901AD7D7ACDCD7F /* LumaStyle.swift */; };
 		2F03250C1A40E82FD31DACFF /* WeekView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8E530D87979F88A296DB676A /* WeekView.swift */; };
 		304D16566395FD4E00624D08 /* PDFStudyExtractor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1860049B6DCE6C5A39FF2210 /* PDFStudyExtractor.swift */; };
+		32ABF54FF72CB1116D6112A3 /* AcademicPlanningService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5D65E41243F2D6ABEEC54E28 /* AcademicPlanningService.swift */; };
 		32EAC0BBFC6DB255D7B3BF21 /* NaturalLanguageTaskParser.swift in Sources */ = {isa = PBXBuildFile; fileRef = 868165E52BEE5113CAA5E7A2 /* NaturalLanguageTaskParser.swift */; };
 		3C27DA66D85D3A8012946571 /* DailyAgenda.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7057F6DE557A73C0192843CF /* DailyAgenda.swift */; };
 		41230147AB9BA3CDCE5845E8 /* StudyModeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB9CFCF051E68EA482EB1B1C /* StudyModeView.swift */; };
@@ -34,9 +35,11 @@
 		5116E63855513C141E4A9AFB /* DailyPlanTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8FF5851AB3E962E565500647 /* DailyPlanTests.swift */; };
 		538C336A8B6B656F470788EE /* StudyContentQuality.swift in Sources */ = {isa = PBXBuildFile; fileRef = 565BD06EBFDC326BB3B42BD3 /* StudyContentQuality.swift */; };
 		5549023336706B42CB738F9C /* BehaviorLearningTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20566F4AE966906840EBBD7 /* BehaviorLearningTests.swift */; };
+		574F2F979BC529E3443243A7 /* RoutinesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F99C397AA18498D7EC760808 /* RoutinesView.swift */; };
 		58745DF34AF7B19341C0A5C0 /* FocusRoomView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A47D21F5C98A2D72405BD944 /* FocusRoomView.swift */; };
 		59CAF46EE70650EEC16F1602 /* AcademicTaskMatcher.swift in Sources */ = {isa = PBXBuildFile; fileRef = B113A918052719BF4B9CB497 /* AcademicTaskMatcher.swift */; };
 		5A26FB298C5FF25F3752083B /* AgendaSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CF8A984BF0B58584A40CBF92 /* AgendaSettingsView.swift */; };
+		5A6456D0C841DC365D60B87A /* ExamsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 24624D7E1D9E3DBE9B157F18 /* ExamsView.swift */; };
 		5C033DCA0FA99AEE102CB81F /* AcademicTaskFields.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5D4A7C6906B3210E18A3E986 /* AcademicTaskFields.swift */; };
 		5C74B575350E98E01F4B0FA4 /* FocusAmbientAudioPlayer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3AF6D326C308BBBF9D7F0C35 /* FocusAmbientAudioPlayer.swift */; };
 		5D016273095F3BAD1A19DEE9 /* rain_forest.mp3 in Resources */ = {isa = PBXBuildFile; fileRef = BB3CA16DAB12395A0DD15785 /* rain_forest.mp3 */; };
@@ -49,6 +52,7 @@
 		7B890BA8B271710204773CF3 /* TaskDependencyPicker.swift in Sources */ = {isa = PBXBuildFile; fileRef = 43E952770DAD7403C776EB79 /* TaskDependencyPicker.swift */; };
 		7BE0DEF32293DCCAF7782B37 /* TaskEditorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0E0FE0A718833060A037D646 /* TaskEditorView.swift */; };
 		7CB2E75125C50C5AB18A19B0 /* Supabase in Frameworks */ = {isa = PBXBuildFile; productRef = 6047C0B6B40AAB954B3FC98A /* Supabase */; };
+		81BD3F0703E556542E820DE1 /* AcademicPlanningViewModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 81EE2753D6C10D79DD70BA59 /* AcademicPlanningViewModels.swift */; };
 		845633394311AE133658DA2E /* FocusSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9A00C921F38EFD60386F45F3 /* FocusSession.swift */; };
 		8F76E23F5B7C37F0BFA3023F /* DailyAgendaTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E02EB9BC0FF5073EF086631D /* DailyAgendaTests.swift */; };
 		9102FF9AD5A042F70B6809B1 /* CloudSyncService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 332A5440BFF719B544D4D939 /* CloudSyncService.swift */; };
@@ -75,6 +79,7 @@
 		CD1E55B45E1DDF684571537C /* LumaAssistantView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1178A9D96F563CEF12DC6735 /* LumaAssistantView.swift */; };
 		DAB0589439C7A9FD21B4AF7E /* WorkflowViewModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 37886F7A2A7D58931F149AF7 /* WorkflowViewModels.swift */; };
 		DBBE0C8F8669484EFC98530A /* SubjectGradeSummary.swift in Sources */ = {isa = PBXBuildFile; fileRef = FC9CD37885D1BF5AFAFC5DC6 /* SubjectGradeSummary.swift */; };
+		E04A5E48A98A27D53C806685 /* AcademicPlanning.swift in Sources */ = {isa = PBXBuildFile; fileRef = 34A1F2FA7DFBA3CC0534F009 /* AcademicPlanning.swift */; };
 		E1141EEAFBD349A864D096DA /* TaskPlannerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = DBE1910D93173EB3C01123CC /* TaskPlannerTests.swift */; };
 		E4B83C180FC7845177FE4161 /* OnboardingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 659E0A87305F9A80E967A5D2 /* OnboardingView.swift */; };
 		E87CBF35435ACE34B6F59A5A /* Tokenizers in Frameworks */ = {isa = PBXBuildFile; productRef = 14A667DA7AEE3E9B743E6B9D /* Tokenizers */; };
@@ -102,8 +107,10 @@
 		1178A9D96F563CEF12DC6735 /* LumaAssistantView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LumaAssistantView.swift; sourceTree = "<group>"; };
 		14C9BE7C313DEABB3FA4A553 /* StudyGuide.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StudyGuide.swift; sourceTree = "<group>"; };
 		1860049B6DCE6C5A39FF2210 /* PDFStudyExtractor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PDFStudyExtractor.swift; sourceTree = "<group>"; };
+		24624D7E1D9E3DBE9B157F18 /* ExamsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExamsView.swift; sourceTree = "<group>"; };
 		24DE22D0DE2546AC5CEC9162 /* LumaChatIntentResolver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LumaChatIntentResolver.swift; sourceTree = "<group>"; };
 		332A5440BFF719B544D4D939 /* CloudSyncService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CloudSyncService.swift; sourceTree = "<group>"; };
+		34A1F2FA7DFBA3CC0534F009 /* AcademicPlanning.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AcademicPlanning.swift; sourceTree = "<group>"; };
 		3736DCE5466EE1EDA97731BC /* DashboardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardView.swift; sourceTree = "<group>"; };
 		37886F7A2A7D58931F149AF7 /* WorkflowViewModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkflowViewModels.swift; sourceTree = "<group>"; };
 		3AF6D326C308BBBF9D7F0C35 /* FocusAmbientAudioPlayer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FocusAmbientAudioPlayer.swift; sourceTree = "<group>"; };
@@ -118,6 +125,8 @@
 		578D63551A60B77180457E7C /* InboxView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InboxView.swift; sourceTree = "<group>"; };
 		5CA11A2B1E413C85C9EF9121 /* LumaTask.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LumaTask.swift; sourceTree = "<group>"; };
 		5D4A7C6906B3210E18A3E986 /* AcademicTaskFields.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AcademicTaskFields.swift; sourceTree = "<group>"; };
+		5D65E41243F2D6ABEEC54E28 /* AcademicPlanningService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AcademicPlanningService.swift; sourceTree = "<group>"; };
+		5E0FEFC5CDE715CE48570ABF /* DailyTimeBudgetTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DailyTimeBudgetTests.swift; sourceTree = "<group>"; };
 		5E90D254FC94061086479EB2 /* BehaviorLearningEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BehaviorLearningEngine.swift; sourceTree = "<group>"; };
 		6317FAA29F22A3EA8450208F /* LumaTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = LumaTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		659E0A87305F9A80E967A5D2 /* OnboardingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingView.swift; sourceTree = "<group>"; };
@@ -128,6 +137,7 @@
 		7AB8DDB9CC1B2FFE442204F7 /* Luma.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Luma.entitlements; sourceTree = "<group>"; };
 		7BEF13393A299B4E09EFFC69 /* LifeArea.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LifeArea.swift; sourceTree = "<group>"; };
 		8001B760D418D2E6D37C472A /* CaptureViewModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CaptureViewModels.swift; sourceTree = "<group>"; };
+		81EE2753D6C10D79DD70BA59 /* AcademicPlanningViewModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AcademicPlanningViewModels.swift; sourceTree = "<group>"; };
 		868165E52BEE5113CAA5E7A2 /* NaturalLanguageTaskParser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NaturalLanguageTaskParser.swift; sourceTree = "<group>"; };
 		8A5DB36102232D48611B3891 /* InsightsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InsightsView.swift; sourceTree = "<group>"; };
 		8D6FC1D0373FB59A3D57B9A8 /* NaturalLanguageTaskParserTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NaturalLanguageTaskParserTests.swift; sourceTree = "<group>"; };
@@ -160,12 +170,12 @@
 		D6C9B823BDC951341B575BA8 /* NaturalLanguageAgendaParser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NaturalLanguageAgendaParser.swift; sourceTree = "<group>"; };
 		DA376C6D56AB1625F25CA22D /* LumaAuthStorage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LumaAuthStorage.swift; sourceTree = "<group>"; };
 		DBE1910D93173EB3C01123CC /* TaskPlannerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TaskPlannerTests.swift; sourceTree = "<group>"; };
-		DCC9FF1AAA11ED6C31E67DA9 /* BalanceView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BalanceView.swift; sourceTree = "<group>"; };
 		DF8C531E464C9C4EDE2648C6 /* Luma.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Luma.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		E02EB9BC0FF5073EF086631D /* DailyAgendaTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DailyAgendaTests.swift; sourceTree = "<group>"; };
 		E1547EF4F06745B612CEB60B /* LumaApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LumaApp.swift; sourceTree = "<group>"; };
 		E8F410A64901AD7D7ACDCD7F /* LumaStyle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LumaStyle.swift; sourceTree = "<group>"; };
 		F76C383F37C53F6D442F47B4 /* FivePhaseIntegrationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FivePhaseIntegrationTests.swift; sourceTree = "<group>"; };
+		F99C397AA18498D7EC760808 /* RoutinesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RoutinesView.swift; sourceTree = "<group>"; };
 		F9B144917CD30162039A2472 /* GlobalShortcutController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GlobalShortcutController.swift; sourceTree = "<group>"; };
 		FA969322A51D8BC9506137CF /* rain_window.mp3 */ = {isa = PBXFileReference; lastKnownFileType = audio.mp3; path = rain_window.mp3; sourceTree = "<group>"; };
 		FC0521E6ACC544E1F2342162 /* ReplanPreviewView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReplanPreviewView.swift; sourceTree = "<group>"; };
@@ -197,14 +207,15 @@
 				CF8A984BF0B58584A40CBF92 /* AgendaSettingsView.swift */,
 				C7F052A498BC201F4495D27C /* AppShellView.swift */,
 				A87D6F894D645B0916425C26 /* AttentionView.swift */,
-				DCC9FF1AAA11ED6C31E67DA9 /* BalanceView.swift */,
 				3736DCE5466EE1EDA97731BC /* DashboardView.swift */,
+				24624D7E1D9E3DBE9B157F18 /* ExamsView.swift */,
 				A47D21F5C98A2D72405BD944 /* FocusRoomView.swift */,
 				578D63551A60B77180457E7C /* InboxView.swift */,
 				8A5DB36102232D48611B3891 /* InsightsView.swift */,
 				1178A9D96F563CEF12DC6735 /* LumaAssistantView.swift */,
 				659E0A87305F9A80E967A5D2 /* OnboardingView.swift */,
 				495AC123845CCD6AA957D606 /* QuickCaptureView.swift */,
+				F99C397AA18498D7EC760808 /* RoutinesView.swift */,
 				C0C5A65312921C562F9563CE /* SettingsView.swift */,
 				BB9CFCF051E68EA482EB1B1C /* StudyModeView.swift */,
 				92042D9755B0EF5BFE5E1D5E /* SubjectsView.swift */,
@@ -236,6 +247,7 @@
 			isa = PBXGroup;
 			children = (
 				A2FA0A596E52B50EF7243590 /* AcademicInsights.swift */,
+				34A1F2FA7DFBA3CC0534F009 /* AcademicPlanning.swift */,
 				B8FAB1D7CDD5248DA66C9234 /* AcademicSubject.swift */,
 				03DCDF371F4582F27AD7932E /* AppState.swift */,
 				7057F6DE557A73C0192843CF /* DailyAgenda.swift */,
@@ -301,6 +313,7 @@
 		A399583EF29556E46E3331D3 /* ViewModels */ = {
 			isa = PBXGroup;
 			children = (
+				81EE2753D6C10D79DD70BA59 /* AcademicPlanningViewModels.swift */,
 				8001B760D418D2E6D37C472A /* CaptureViewModels.swift */,
 				73FF758050B4AF6B17CEF34C /* ComponentViewModels.swift */,
 				75441DA5ED37D2BF0D35E394 /* PlanningViewModels.swift */,
@@ -312,6 +325,7 @@
 		CEC16FCFB9E9FD15ADB23AFD /* Services */ = {
 			isa = PBXGroup;
 			children = (
+				5D65E41243F2D6ABEEC54E28 /* AcademicPlanningService.swift */,
 				B113A918052719BF4B9CB497 /* AcademicTaskMatcher.swift */,
 				C836146F86380C5A981B5301 /* BackupService.swift */,
 				5E90D254FC94061086479EB2 /* BehaviorLearningEngine.swift */,
@@ -341,6 +355,7 @@
 				A20566F4AE966906840EBBD7 /* BehaviorLearningTests.swift */,
 				E02EB9BC0FF5073EF086631D /* DailyAgendaTests.swift */,
 				8FF5851AB3E962E565500647 /* DailyPlanTests.swift */,
+				5E0FEFC5CDE715CE48570ABF /* DailyTimeBudgetTests.swift */,
 				F76C383F37C53F6D442F47B4 /* FivePhaseIntegrationTests.swift */,
 				8D6FC1D0373FB59A3D57B9A8 /* NaturalLanguageTaskParserTests.swift */,
 				CB5B843C41EEE7F5BAA1C50D /* StudyModeTests.swift */,
@@ -459,6 +474,9 @@
 			files = (
 				BD1B8159D76F8509CBF877F7 /* AIDownloadProgressView.swift in Sources */,
 				A70EFDBBA7FE0E5A91C23250 /* AcademicInsights.swift in Sources */,
+				E04A5E48A98A27D53C806685 /* AcademicPlanning.swift in Sources */,
+				32ABF54FF72CB1116D6112A3 /* AcademicPlanningService.swift in Sources */,
+				81BD3F0703E556542E820DE1 /* AcademicPlanningViewModels.swift in Sources */,
 				21E43C806344A6E19493D47A /* AcademicSubject.swift in Sources */,
 				5C033DCA0FA99AEE102CB81F /* AcademicTaskFields.swift in Sources */,
 				59CAF46EE70650EEC16F1602 /* AcademicTaskMatcher.swift in Sources */,
@@ -467,7 +485,6 @@
 				9CEBE2944B6B542C10BC5C91 /* AppState.swift in Sources */,
 				BB188B3CB628D8EE320B4E29 /* AttentionView.swift in Sources */,
 				984E889D4E57662A8E6CC973 /* BackupService.swift in Sources */,
-				10338C3F96ADBB8FD369AFF6 /* BalanceView.swift in Sources */,
 				CA7A81238D7C6EA5C870EC90 /* BehaviorLearningEngine.swift in Sources */,
 				240EA3743A9CE31D36F69A97 /* CalendarIntegrationService.swift in Sources */,
 				169087B4DBAAC38415DD3E8A /* CaptureViewModels.swift in Sources */,
@@ -475,6 +492,7 @@
 				AA6F6BFBC46B8066AA8D06B4 /* ComponentViewModels.swift in Sources */,
 				3C27DA66D85D3A8012946571 /* DailyAgenda.swift in Sources */,
 				EE209126E8E1ED42C4D26C8D /* DashboardView.swift in Sources */,
+				5A6456D0C841DC365D60B87A /* ExamsView.swift in Sources */,
 				5C74B575350E98E01F4B0FA4 /* FocusAmbientAudioPlayer.swift in Sources */,
 				58745DF34AF7B19341C0A5C0 /* FocusRoomView.swift in Sources */,
 				845633394311AE133658DA2E /* FocusSession.swift in Sources */,
@@ -500,6 +518,7 @@
 				5F0CBE5E50D1A805FF8AA89A /* PlanningViewModels.swift in Sources */,
 				B37EF7FD27B1DADE64AE3B82 /* QuickCaptureView.swift in Sources */,
 				028F30DCEE520234A66CC4F6 /* ReplanPreviewView.swift in Sources */,
+				574F2F979BC529E3443243A7 /* RoutinesView.swift in Sources */,
 				684E3A9DA29D69F2765AE4EE /* SampleDataSeeder.swift in Sources */,
 				AA275BE380B7558509E462D6 /* SettingsView.swift in Sources */,
 				538C336A8B6B656F470788EE /* StudyContentQuality.swift in Sources */,
@@ -525,6 +544,7 @@
 				5549023336706B42CB738F9C /* BehaviorLearningTests.swift in Sources */,
 				8F76E23F5B7C37F0BFA3023F /* DailyAgendaTests.swift in Sources */,
 				5116E63855513C141E4A9AFB /* DailyPlanTests.swift in Sources */,
+				18B5FF5489893B08280EFB61 /* DailyTimeBudgetTests.swift in Sources */,
 				9657A03C7BE4ADCC51A2554A /* FivePhaseIntegrationTests.swift in Sources */,
 				6E5601CAC659B0042A085F9B /* NaturalLanguageTaskParserTests.swift in Sources */,
 				FFC9D09EF6657D80B2AFDEC9 /* StudyModeTests.swift in Sources */,
@@ -550,7 +570,7 @@
 				CODE_SIGN_ENTITLEMENTS = Luma/Luma.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 9;
+				CURRENT_PROJECT_VERSION = 13;
 				ENABLE_APP_SANDBOX = YES;
 				ENABLE_HARDENED_RUNTIME = YES;
 				GENERATE_INFOPLIST_FILE = YES;
@@ -566,7 +586,7 @@
 					"@executable_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 0.6.0;
+				MARKETING_VERSION = 0.7.3;
 				PRODUCT_BUNDLE_IDENTIFIER = com.luma.organizer;
 				PRODUCT_NAME = Luma;
 				SDKROOT = macosx;
@@ -736,7 +756,7 @@
 				CODE_SIGN_ENTITLEMENTS = Luma/Luma.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 9;
+				CURRENT_PROJECT_VERSION = 13;
 				ENABLE_APP_SANDBOX = YES;
 				ENABLE_HARDENED_RUNTIME = YES;
 				GENERATE_INFOPLIST_FILE = YES;
@@ -752,7 +772,7 @@
 					"@executable_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 0.6.0;
+				MARKETING_VERSION = 0.7.3;
 				PRODUCT_BUNDLE_IDENTIFIER = com.luma.organizer;
 				PRODUCT_NAME = Luma;
 				SDKROOT = macosx;

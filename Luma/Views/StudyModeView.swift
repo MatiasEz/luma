@@ -340,7 +340,9 @@ struct StudyModeView: View {
                 }
             }
             .padding(18)
+            .lumaScrollContent()
         }
+        .lumaScrollSurface()
     }
 
     private func guideDetail(_ guide: StudyGuide) -> some View {
@@ -369,8 +371,9 @@ struct StudyModeView: View {
                 }
             }
             .padding(26)
-            .frame(maxWidth: 900, alignment: .leading)
+            .lumaScrollContent()
         }
+        .lumaScrollSurface()
     }
 
     private func guideSummary(_ guide: StudyGuide) -> some View {

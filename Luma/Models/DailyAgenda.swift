@@ -97,29 +97,42 @@ struct DailyScheduler {
         recommendations: [PlanRecommendation],
         availableMinutes: Int,
         startMinuteOfDay: Int,
-        busyBlocks: [BusyTimeBlock] = []
+        busyBlocks: [BusyTimeBlock] = [],
+        reservedRestMinutes: Int? = nil
     ) -> [AgendaBlockSnapshot] {
+        guard availableMinutes > 0 else { return [] }
         let start = min(23 * 60 + 45, max(0, startMinuteOfDay))
-        let end = min(24 * 60, start + min(480, max(15, availableMinutes)))
+        let minimumMinutes = reservedRestMinutes == nil ? 15 : 1
+        let end = min(24 * 60, start + min(600, max(minimumMinutes, availableMinutes)))
         return schedule(
             recommendations: recommendations,
             availabilityWindows: [
                 AvailabilityWindow(startMinuteOfDay: start, endMinuteOfDay: end),
             ],
-            busyBlocks: busyBlocks
+            busyBlocks: busyBlocks,
+            reservedRestMinutes: reservedRestMinutes
         )
     }
 
     func schedule(
         recommendations: [PlanRecommendation],
         availabilityWindows: [AvailabilityWindow],
-        busyBlocks: [BusyTimeBlock] = []
+        busyBlocks: [BusyTimeBlock] = [],
+        reservedRestMinutes: Int? = nil
     ) -> [AgendaBlockSnapshot] {
         let freeWindows = freeAvailabilityWindows(
             in: availabilityWindows,
-            busyBlocks: busyBlocks
+            busyBlocks: busyBlocks,
+            minimumDurationMinutes: reservedRestMinutes == nil ? 15 : 1
         )
-        let available = min(480, freeWindows.reduce(0) { $0 + $1.durationMinutes })
+        let available = min(600, freeWindows.reduce(0) { $0 + $1.durationMinutes })
+        if let reservedRestMinutes {
+            return scheduleAssignedBlocks(
+                recommendations: recommendations,
+                freeWindows: freeWindows,
+                workBudget: max(0, available - max(0, reservedRestMinutes))
+            )
+        }
         guard available >= 15 else { return [] }
 
         let taskCount: Int
@@ -184,10 +197,50 @@ struct DailyScheduler {
         return blocks
     }
 
+    /// Assigned minutes already account for rest. Leave its total free without
+    /// inserting another pause between every pair of work blocks.
+    private func scheduleAssignedBlocks(
+        recommendations: [PlanRecommendation],
+        freeWindows: [AvailabilityWindow],
+        workBudget: Int
+    ) -> [AgendaBlockSnapshot] {
+        var remainingMinutes = workBudget
+        var windows = freeWindows
+        var blocks: [AgendaBlockSnapshot] = []
+        var seen = Set<UUID>()
+
+        for recommendation in recommendations.prefix(3) {
+            guard remainingMinutes > 0 else { break }
+            guard recommendation.task.academicSourceType != .rest,
+                  seen.insert(recommendation.task.id).inserted
+            else { continue }
+            let desired = min(remainingMinutes, max(0, recommendation.suggestedMinutes))
+            guard desired > 0 else { continue }
+
+            let windowIndex = windows.firstIndex { $0.durationMinutes >= desired }
+                ?? windows.indices.max { windows[$0].durationMinutes < windows[$1].durationMinutes }
+            guard let windowIndex else { break }
+            let duration = min(desired, windows[windowIndex].durationMinutes)
+            guard duration > 0 else { break }
+
+            blocks.append(AgendaBlockSnapshot(
+                taskID: recommendation.task.id,
+                startMinuteOfDay: windows[windowIndex].startMinuteOfDay,
+                durationMinutes: duration
+            ))
+            windows[windowIndex].startMinuteOfDay += duration
+            remainingMinutes -= duration
+        }
+
+        return blocks.sorted { $0.startMinuteOfDay < $1.startMinuteOfDay }
+    }
+
     func freeAvailabilityWindows(
         in availabilityWindows: [AvailabilityWindow],
-        busyBlocks: [BusyTimeBlock]
+        busyBlocks: [BusyTimeBlock],
+        minimumDurationMinutes: Int = 15
     ) -> [AvailabilityWindow] {
+        let minimumMinutes = max(1, minimumDurationMinutes)
         let normalized = availabilityWindows
             .map {
                 AvailabilityWindow(
@@ -196,7 +249,7 @@ struct DailyScheduler {
                     endMinuteOfDay: min(24 * 60, max(0, $0.endMinuteOfDay))
                 )
             }
-            .filter { $0.durationMinutes >= 15 }
+            .filter { $0.durationMinutes >= minimumMinutes }
             .sorted { $0.startMinuteOfDay < $1.startMinuteOfDay }
         let merged = normalized.reduce(into: [AvailabilityWindow]()) { result, window in
             guard var last = result.last,
@@ -220,13 +273,13 @@ struct DailyScheduler {
                     else { return [piece] }
 
                     var remaining: [AvailabilityWindow] = []
-                    if busy.startMinuteOfDay - piece.startMinuteOfDay >= 15 {
+                    if busy.startMinuteOfDay - piece.startMinuteOfDay >= minimumMinutes {
                         remaining.append(AvailabilityWindow(
                             startMinuteOfDay: piece.startMinuteOfDay,
                             endMinuteOfDay: busy.startMinuteOfDay
                         ))
                     }
-                    if piece.endMinuteOfDay - busy.endMinuteOfDay >= 15 {
+                    if piece.endMinuteOfDay - busy.endMinuteOfDay >= minimumMinutes {
                         remaining.append(AvailabilityWindow(
                             startMinuteOfDay: busy.endMinuteOfDay,
                             endMinuteOfDay: piece.endMinuteOfDay
@@ -249,7 +302,11 @@ struct DailyScheduler {
         busyBlocks: [BusyTimeBlock]
     ) -> [AgendaBlockSnapshot] {
         guard let moving = blocks.first(where: { $0.taskID == taskID }) else { return blocks }
-        let freeWindows = freeAvailabilityWindows(in: availabilityWindows, busyBlocks: busyBlocks)
+        let freeWindows = freeAvailabilityWindows(
+            in: availabilityWindows,
+            busyBlocks: busyBlocks,
+            minimumDurationMinutes: min(15, blocks.map(\.durationMinutes).min() ?? 15)
+        )
         let movingCandidates = candidateStarts(duration: moving.durationMinutes, in: freeWindows)
         guard let movingStart = movingCandidates.min(by: {
             abs($0 - proposedStartMinute) < abs($1 - proposedStartMinute)

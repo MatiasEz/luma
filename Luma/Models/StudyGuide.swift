@@ -13,6 +13,19 @@ struct ExtractedStudyDocument: Sendable {
     var pages: [StudySourcePage]
 }
 
+struct StudySubtopic: Codable, Hashable, Identifiable, Sendable {
+    var code: String
+    var title: String
+    var sourcePages: [Int]
+
+    var id: String { "\(code)|\(title)" }
+
+    var displayTitle: String {
+        let cleanCode = code.trimmingCharacters(in: .whitespacesAndNewlines)
+        return cleanCode.isEmpty ? title : "\(cleanCode) \(title)"
+    }
+}
+
 struct StudyTopic: Codable, Hashable, Identifiable, Sendable {
     var id = UUID()
     var title: String
@@ -22,12 +35,33 @@ struct StudyTopic: Codable, Hashable, Identifiable, Sendable {
     var importance: Int
     var suggestedMinutes: Int
     var taskID: UUID?
+    var subtopics: [StudySubtopic]? = nil
 
     var pageLabel: String {
         let pages = Array(Set(sourcePages)).sorted()
         guard let first = pages.first else { return "Sin página" }
         guard let last = pages.last, last != first else { return "Pág. \(first)" }
         return "Págs. \(first)–\(last)"
+    }
+
+    var syllabusSubtopics: [StudySubtopic] {
+        if let subtopics, !subtopics.isEmpty { return subtopics }
+        return keyPoints.compactMap { point in
+            let pattern = #"^\s*(\d{1,2}(?:\.\d+)+)\s+(.+)$"#
+            guard let expression = try? NSRegularExpression(pattern: pattern),
+                  let match = expression.firstMatch(
+                      in: point,
+                      range: NSRange(point.startIndex ..< point.endIndex, in: point)
+                  ),
+                  let codeRange = Range(match.range(at: 1), in: point),
+                  let titleRange = Range(match.range(at: 2), in: point)
+            else { return nil }
+            return StudySubtopic(
+                code: String(point[codeRange]),
+                title: String(point[titleRange]).trimmingCharacters(in: .whitespacesAndNewlines),
+                sourcePages: sourcePages
+            )
+        }
     }
 }
 

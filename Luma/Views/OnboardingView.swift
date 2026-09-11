@@ -94,7 +94,7 @@ struct OnboardingView: View {
     private var importantAreas: some View {
         VStack(alignment: .leading, spacing: 20) {
             SectionTitle(
-                eyebrow: "Tu balance",
+                eyebrow: "Tus prioridades",
                 title: "¿Qué querés cuidar especialmente?",
                 trailing: "Elegí una o varias"
             )

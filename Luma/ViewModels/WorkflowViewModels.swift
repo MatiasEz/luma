@@ -111,29 +111,9 @@ final class SubjectsViewModel {
     var editorPresented = false
     var editingSubject: AcademicSubject?
     var subjectToArchive: AcademicSubject?
-    var gradeDetailSubject: AcademicSubject?
-    var quickGradeEntryPresented = false
 
     func activeSubjects(from subjects: [AcademicSubject]) -> [AcademicSubject] {
         subjects.filter { !$0.isArchived }
-    }
-
-    func activeItems(from items: [SubjectGradeItem]) -> [SubjectGradeItem] {
-        items.filter { !$0.isArchived }
-    }
-
-    func gradeEntryTasks(
-        subjects: [AcademicSubject],
-        items: [SubjectGradeItem],
-        tasks: [LumaTask]
-    ) -> [LumaTask] {
-        let subjectIDs = Set(activeSubjects(from: subjects).map(\.id))
-        let itemIDs = Set(activeItems(from: items).map(\.id))
-        return tasks.filter {
-            $0.academicSubjectID.map(subjectIDs.contains) == true
-                && $0.subjectGradeItemID.map(itemIDs.contains) == true
-                && ($0.isCompleted || $0.grade != nil)
-        }
     }
 }
 

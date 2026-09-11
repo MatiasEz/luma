@@ -79,7 +79,7 @@ enum ImpactType: String, Codable, CaseIterable, Identifiable {
 
     var title: String {
         switch self {
-        case .grade: "Calificación"
+        case .grade: "Académico"
         case .money: "Dinero"
         case .urgency: "Urgencia"
         case .wellbeing: "Bienestar"

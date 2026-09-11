@@ -19,7 +19,6 @@ enum LumaChatActionKind: String, Equatable {
     case completeTask
     case renameTask
     case changeDeadline
-    case setGrade
     case changeDuration
 }
 
@@ -66,13 +65,14 @@ enum LumaAssistantContextBuilder {
     static func makeContext(
         tasks: [LumaTask],
         subjects: [AcademicSubject] = [],
-        subjectGradeItems: [SubjectGradeItem] = [],
+        classMeetings: [SubjectClassMeeting] = [],
         recommendations: [PlanRecommendation],
         agenda: DailyAgendaSnapshot?,
         commitments: [CalendarCommitment],
         energyPreference: EnergyPreference,
         workload: WorkloadLevel,
         profile: LumaProfile? = nil,
+        remainingAvailableMinutes: Int? = nil,
         now: Date = .now
     ) -> String {
         let calendar = Calendar.current
@@ -86,11 +86,6 @@ enum LumaAssistantContextBuilder {
         let subjectNamesByID = Dictionary(
             uniqueKeysWithValues: activeSubjects.map { ($0.id, $0.name) }
         )
-        let activeGradeItems = subjectGradeItems.filter { !$0.isArchived }
-        let gradeItemNamesByID = Dictionary(
-            uniqueKeysWithValues: activeGradeItems.map { ($0.id, $0.title) }
-        )
-
         let pending = tasks
             .filter { !$0.isCompleted }
             .sorted {
@@ -102,7 +97,7 @@ enum LumaAssistantContextBuilder {
                 }
             }
         let relevantTasks = tasks
-            .filter { !$0.isCompleted || $0.academicEvaluationStatus == .awaitingGrade }
+            .filter { !$0.isCompleted }
             .sorted {
                 switch ($0.deadline, $1.deadline) {
                 case let (left?, right?): left < right
@@ -113,29 +108,39 @@ enum LumaAssistantContextBuilder {
             }
         let taskLines = relevantTasks.prefix(40).map { task in
             let deadline = task.deadline.map(dateFormatter.string(from:)) ?? "sin fecha"
-            let weight = task.academicWeight.map { " · ponderación \(Int($0))%" } ?? ""
             let subject = task.academicSubjectID
                 .flatMap { subjectNamesByID[$0] }
                 .map { " · materia \($0)" } ?? ""
-            let category = task.subjectGradeItemID
-                .flatMap { gradeItemNamesByID[$0] }
-                .map { " · categoría \($0)" } ?? ""
-            let evaluation = task.academicEvaluationStatus.map { " · estado \($0.title.lowercased())" } ?? ""
-            let grade = task.grade.map { " · nota \($0.formatted(.number.precision(.fractionLength(0 ... 2))))/10" } ?? ""
             let unlock = task.unlocksTaskID.flatMap { targetID in
                 tasks.first { $0.id == targetID }?.title
             }.map { " · al completarse desbloquea \($0)" }
                 ?? (task.unlocksAnotherTask ? " · desbloquea otra tarea" : "")
             let blockerNames = TaskDependencyResolver.blockers(for: task.id, in: tasks).map(\.title)
             let blocked = blockerNames.isEmpty ? "" : " · BLOQUEADA por \(blockerNames.joined(separator: ", "))"
-            return "- id=\(task.id.uuidString) · \(task.title) · \(task.area.title)\(subject)\(category)\(evaluation)\(grade) · vence \(deadline) · duración estimada \(task.estimatedMinutes) min · quedan \(task.remainingEstimatedMinutes) min · energía \(task.energy.title.lowercased()) · impacto \(task.impact.title.lowercased()) · postergada \(task.postponementCount) veces\(weight)\(unlock)\(blocked)"
+            return "- id=\(task.id.uuidString) · \(task.title) · \(task.area.title)\(subject) · vence \(deadline) · duración estimada \(task.estimatedMinutes) min · quedan \(task.remainingEstimatedMinutes) min · energía \(task.energy.title.lowercased()) · impacto \(task.impact.title.lowercased()) · postergada \(task.postponementCount) veces\(unlock)\(blocked)"
         }.joined(separator: "\n")
 
         let subjectLines = activeSubjects.map { subject in
             let pendingCount = pending.filter { $0.academicSubjectID == subject.id }.count
-            let target = subject.targetGrade.map { " · objetivo \($0.formatted(.number.precision(.fractionLength(0 ... 2))))/10" } ?? ""
-            return "- id=\(subject.id.uuidString) · \(subject.name)\(target) · \(pendingCount) pendientes"
+            return "- id=\(subject.id.uuidString) · \(subject.name) · \(pendingCount) pendientes"
         }.joined(separator: "\n")
+
+        let classMeetingLines = classMeetings
+            .filter { subjectNamesByID[$0.subjectID] != nil }
+            .sorted {
+                $0.weekday == $1.weekday
+                    ? $0.startMinuteOfDay < $1.startMinuteOfDay
+                    : $0.weekday < $1.weekday
+            }
+            .map { meeting in
+                let subject = subjectNamesByID[meeting.subjectID] ?? "Materia"
+                let start = minuteOfDayTitle(meeting.startMinuteOfDay)
+                let end = minuteOfDayTitle(meeting.endMinuteOfDay)
+                let location = meeting.location.trimmingCharacters(in: .whitespacesAndNewlines)
+                let locationText = location.isEmpty ? "" : " · \(location)"
+                return "- \(subject) · \(weekdayTitle(meeting.weekday)) \(start)–\(end)\(locationText)"
+            }
+            .joined(separator: "\n")
 
         let recommendationLines = recommendations.enumerated().map { index, item in
             "\(index + 1). id=\(item.task.id.uuidString) · \(item.task.title) · bloque sugerido \(item.suggestedMinutes) min · \(item.reason)"
@@ -167,6 +172,7 @@ enum LumaAssistantContextBuilder {
         return """
         Fecha y hora local: \(dateFormatter.string(from: now)) \(timeFormatter.string(from: now))
         Energía declarada: \(energyPreference.title)
+        Tiempo que queda disponible hoy: \(remainingAvailableMinutes.map(durationTitle) ?? "sin confirmar")
         Carga semanal calculada: \(workload.title)
         Pendientes por área: \(areaCounts.isEmpty ? "ninguno" : areaCounts)
         Tareas completadas en los últimos 7 días: \(completedThisWeek)
@@ -186,6 +192,9 @@ enum LumaAssistantContextBuilder {
         MATERIAS:
         \(subjectLines.isEmpty ? "Sin materias cargadas." : subjectLines)
 
+        HORARIOS SEMANALES DE CLASE:
+        \(classMeetingLines.isEmpty ? "Sin horarios de clase cargados." : classMeetingLines)
+
         PENDIENTES DISPONIBLES:
         \(taskLines.isEmpty ? "No hay pendientes." : taskLines)
         """
@@ -198,6 +207,7 @@ enum LumaAssistantContextBuilder {
         commitments: [CalendarCommitment],
         energyPreference: EnergyPreference,
         profile: LumaProfile?,
+        remainingAvailableMinutes: Int? = nil,
         now: Date = .now
     ) -> [String] {
         var evidence = ["Energía actual: \(energyPreference.title.lowercased())"]
@@ -206,10 +216,10 @@ enum LumaAssistantContextBuilder {
         } else {
             evidence.append("No hay prioridades pendientes para hoy")
         }
-        if let agenda {
-            evidence.append(agenda.availableMinutes == 0
-                ? "Hoy está marcado como día protegido"
-                : "Tiempo disponible hoy: \(durationTitle(agenda.availableMinutes))")
+        if let minutes = remainingAvailableMinutes ?? agenda?.availableMinutes {
+            evidence.append(minutes == 0
+                ? "No queda tiempo disponible confirmado"
+                : "Tiempo que te queda: \(durationTitle(minutes))")
         }
         if !commitments.isEmpty {
             evidence.append("Calendario: \(commitments.count) compromisos respetados")
@@ -227,7 +237,13 @@ enum LumaAssistantContextBuilder {
     }
 
     private static func weekdayTitle(_ weekday: Int) -> String {
-        DayAvailability.standardWeek.first(where: { $0.weekday == weekday })?.shortTitle ?? "Día"
+        let symbols = ["domingo", "lunes", "martes", "miércoles", "jueves", "viernes", "sábado"]
+        guard symbols.indices.contains(weekday - 1) else { return "día" }
+        return symbols[weekday - 1]
+    }
+
+    private static func minuteOfDayTitle(_ minute: Int) -> String {
+        String(format: "%02d:%02d", minute / 60, minute % 60)
     }
 
     private static func durationTitle(_ minutes: Int) -> String {

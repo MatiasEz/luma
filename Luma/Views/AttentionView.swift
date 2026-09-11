@@ -97,8 +97,9 @@ struct AttentionView: View {
                 recentActivity
             }
             .padding(30)
-            .frame(maxWidth: 1040, alignment: .leading)
+            .lumaScrollContent()
         }
+        .lumaScrollSurface()
         .navigationTitle("Atención")
         .sheet(item: Binding(
             get: { viewModel.editingTask },

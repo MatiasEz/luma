@@ -262,11 +262,18 @@ struct ReplanProposal: Identifiable, Equatable {
     var beforeBlocks: [AgendaBlockSnapshot]
     var afterBlocks: [AgendaBlockSnapshot]
     var changeSummary: [String]
+    var beforeSuggestedMinutesByTaskID: [UUID: Int]? = nil
+    var afterSuggestedMinutesByTaskID: [UUID: Int]? = nil
+    var beforeRestMinutes = 0
+    var afterRestMinutes = 0
+    var timeAllowanceAdjustment: Int? = nil
 
     var changesCurrentPlan: Bool {
         beforeEnergy != afterEnergy
             || beforeAvailableMinutes != afterAvailableMinutes
             || beforeTaskIDs != afterTaskIDs
+            || beforeSuggestedMinutesByTaskID != afterSuggestedMinutesByTaskID
+            || beforeRestMinutes != afterRestMinutes
             || beforeBlocks != afterBlocks
     }
 }
@@ -281,7 +288,9 @@ enum ReplanProposalBuilder {
         currentAgenda: DailyAgendaSnapshot?,
         currentEnergy: EnergyPreference,
         proposedEnergy: EnergyPreference,
+        currentAvailableMinutes: Int? = nil,
         proposedAvailableMinutes: Int? = nil,
+        timeBudget: DailyTimeBudgetSnapshot? = nil,
         planner: TaskPlanner,
         scheduler: DailyScheduler,
         busyBlocks: [BusyTimeBlock] = [],
@@ -289,23 +298,69 @@ enum ReplanProposalBuilder {
     ) -> ReplanProposal {
         let calendar = Calendar.current
         let day = calendar.startOfDay(for: now)
-        let beforeIDs = currentPlan?.taskIDs
-            ?? planner.recommendations(from: tasks, now: now, preference: currentEnergy).map(\.task.id)
+        let beforeMinutes = min(600, max(0, currentAvailableMinutes ?? currentAgenda?.availableMinutes ?? 120))
+        let beforeRecommendations = currentPlan.map {
+            planner.recommendationsPreservingPlan(
+                from: tasks,
+                taskIDs: $0.taskIDs,
+                now: now,
+                preference: currentEnergy,
+                savedMinutes: $0.suggestedMinutesByTaskID,
+                savedRestMinutes: $0.restMinutes,
+                budgetOverride: beforeMinutes
+            )
+        } ?? planner.recommendations(
+            from: tasks,
+            now: now,
+            preference: currentEnergy,
+            budgetOverride: beforeMinutes
+        )
+        let beforeIDs = currentPlan?.taskIDs ?? beforeRecommendations.map(\.task.id)
+        let beforeSuggestedMinutes = Dictionary(uniqueKeysWithValues: beforeRecommendations.map {
+            ($0.task.id, $0.suggestedMinutes)
+        })
+        let afterMinutes = proposedAvailableMinutes.map { min(600, max(0, $0)) }
+            ?? beforeMinutes
+        let timeAllowanceAdjustment: Int
+        if afterMinutes != beforeMinutes,
+           let timeBudget, calendar.isDate(timeBudget.day, inSameDayAs: day)
+        {
+            // "Tengo 30 minutos más" offers 30 usable minutes even after an overrun.
+            timeAllowanceAdjustment = timeBudget.consumedMinutes + afterMinutes - timeBudget.allocatedMinutes
+        } else {
+            timeAllowanceAdjustment = afterMinutes - beforeMinutes
+        }
         let afterRecommendations = planner.recommendations(
             from: tasks,
             now: now,
-            preference: proposedEnergy
+            preference: proposedEnergy,
+            budgetOverride: afterMinutes
         )
         let afterIDs = afterRecommendations.map(\.task.id)
-        let beforeMinutes = currentAgenda?.availableMinutes ?? 120
-        let afterMinutes = min(480, max(15, proposedAvailableMinutes ?? beforeMinutes))
+        let afterSuggestedMinutes = Dictionary(uniqueKeysWithValues: afterRecommendations.map {
+            ($0.task.id, $0.suggestedMinutes)
+        })
+        let beforeRestMinutes = planner.restRecommendation(
+            from: tasks,
+            now: now,
+            preference: currentEnergy,
+            budgetOverride: beforeMinutes,
+            savedMinutes: currentPlan?.restMinutes
+        )?.suggestedMinutes ?? 0
+        let afterRestMinutes = planner.restRecommendation(
+            from: tasks,
+            now: now,
+            preference: proposedEnergy,
+            budgetOverride: afterMinutes
+        )?.suggestedMinutes ?? 0
         let startMinute = currentAgenda?.startMinuteOfDay ?? scheduler.defaultStartMinute(now: now)
         let beforeBlocks = currentAgenda?.blocks ?? []
         let afterBlocks = scheduler.schedule(
             recommendations: afterRecommendations,
             availableMinutes: afterMinutes,
             startMinuteOfDay: startMinute,
-            busyBlocks: busyBlocks
+            busyBlocks: busyBlocks,
+            reservedRestMinutes: afterRestMinutes
         )
         let taskNames = Dictionary(uniqueKeysWithValues: tasks.map { ($0.id, $0.title) })
         let summary = changeSummary(
@@ -317,7 +372,11 @@ enum ReplanProposalBuilder {
             beforeEnergy: currentEnergy,
             afterEnergy: proposedEnergy,
             beforeMinutes: beforeMinutes,
-            afterMinutes: afterMinutes
+            afterMinutes: afterMinutes,
+            beforeSuggestedMinutes: beforeSuggestedMinutes,
+            afterSuggestedMinutes: afterSuggestedMinutes,
+            beforeRestMinutes: beforeRestMinutes,
+            afterRestMinutes: afterRestMinutes
         )
 
         return ReplanProposal(
@@ -334,7 +393,12 @@ enum ReplanProposalBuilder {
             afterTaskIDs: afterIDs,
             beforeBlocks: beforeBlocks,
             afterBlocks: afterBlocks,
-            changeSummary: summary
+            changeSummary: summary,
+            beforeSuggestedMinutesByTaskID: beforeSuggestedMinutes,
+            afterSuggestedMinutesByTaskID: afterSuggestedMinutes,
+            beforeRestMinutes: beforeRestMinutes,
+            afterRestMinutes: afterRestMinutes,
+            timeAllowanceAdjustment: timeAllowanceAdjustment
         )
     }
 
@@ -347,7 +411,11 @@ enum ReplanProposalBuilder {
         beforeEnergy: EnergyPreference,
         afterEnergy: EnergyPreference,
         beforeMinutes: Int,
-        afterMinutes: Int
+        afterMinutes: Int,
+        beforeSuggestedMinutes: [UUID: Int],
+        afterSuggestedMinutes: [UUID: Int],
+        beforeRestMinutes: Int,
+        afterRestMinutes: Int
     ) -> [String] {
         var lines: [String] = []
         if beforeEnergy != afterEnergy {
@@ -355,6 +423,9 @@ enum ReplanProposalBuilder {
         }
         if beforeMinutes != afterMinutes {
             lines.append("La disponibilidad pasa de \(duration(beforeMinutes)) a \(duration(afterMinutes)).")
+        }
+        if beforeRestMinutes != afterRestMinutes {
+            lines.append("El descanso reservado pasa de \(duration(beforeRestMinutes)) a \(duration(afterRestMinutes)).")
         }
         for id in beforeIDs where !afterIDs.contains(id) {
             lines.append("\(taskNames[id] ?? "Una tarea") sale de las tres prioridades de hoy.")
@@ -365,6 +436,13 @@ enum ReplanProposalBuilder {
         let oldBlocks = Dictionary(uniqueKeysWithValues: beforeBlocks.map { ($0.taskID, $0) })
         let newBlocks = Dictionary(uniqueKeysWithValues: afterBlocks.map { ($0.taskID, $0) })
         for id in afterIDs {
+            if let oldMinutes = beforeSuggestedMinutes[id],
+               let newMinutes = afterSuggestedMinutes[id],
+               oldMinutes != newMinutes
+            {
+                lines.append("El bloque de \(taskNames[id] ?? "una tarea") pasa de \(duration(oldMinutes)) a \(duration(newMinutes)).")
+                continue
+            }
             guard let old = oldBlocks[id], let new = newBlocks[id], old != new else { continue }
             lines.append("\(taskNames[id] ?? "Una tarea") cambia de horario o duración.")
         }

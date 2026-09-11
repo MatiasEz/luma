@@ -4,24 +4,6 @@ import Observation
 
 @MainActor
 @Observable
-final class InboxTaskRowViewModel {
-    var isGradeEntryExpanded = false
-    var grade: Double?
-
-    func cancelGradeEntry() {
-        grade = nil
-        isGradeEntryExpanded = false
-    }
-
-    func submittedGrade() -> Double? {
-        guard let grade, (0 ... 10).contains(grade) else { return nil }
-        cancelGradeEntry()
-        return grade
-    }
-}
-
-@MainActor
-@Observable
 final class DraggableAgendaRowViewModel {
     var dragOffset: CGFloat = 0
 
@@ -41,149 +23,187 @@ final class PriorityCardViewModel {
 
 @MainActor
 @Observable
-final class SubjectGradeDetailViewModel {
-    var simulatorPresented = false
-    var quickGradeEntryPresented = false
-
-    func summary(items: [SubjectGradeItem], tasks: [LumaTask]) -> SubjectGradeSummary {
-        SubjectGradeCalculator.makeSummary(items: items, tasks: tasks)
-    }
-
-    func gradeEntryTasks(from tasks: [LumaTask]) -> [LumaTask] {
-        tasks.filter { $0.subjectGradeItemID != nil && ($0.isCompleted || $0.grade != nil) }
-    }
-}
-
-@MainActor
-@Observable
-final class QuickGradeEntryViewModel {
-    var selectedSubjectID: UUID?
-    var gradeTexts: [UUID: String]
-
-    init(subjects: [AcademicSubject], tasks: [LumaTask]) {
-        selectedSubjectID = subjects.count == 1 ? subjects.first?.id : nil
-        gradeTexts = Dictionary(uniqueKeysWithValues: tasks.map { task in
-            let text = task.grade?.formatted(.number.precision(.fractionLength(0 ... 2))) ?? ""
-            return (task.id, text)
-        })
-    }
-
-    func filteredSubjects(_ subjects: [AcademicSubject], tasks: [LumaTask]) -> [AcademicSubject] {
-        subjects.filter { subject in
-            (selectedSubjectID == nil || selectedSubjectID == subject.id)
-                && tasks.contains { $0.academicSubjectID == subject.id }
-        }
-    }
-
-    func parsedGrade(for task: LumaTask) -> Double? {
-        let text = (gradeTexts[task.id] ?? "")
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-            .replacingOccurrences(of: ",", with: ".")
-        guard !text.isEmpty else { return nil }
-        return Double(text)
-    }
-
-    func inputIsValid(for task: LumaTask) -> Bool {
-        let text = (gradeTexts[task.id] ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
-        if text.isEmpty { return true }
-        guard let grade = parsedGrade(for: task) else { return false }
-        return (0 ... 10).contains(grade)
-    }
-
-    func gradeChanged(for task: LumaTask) -> Bool {
-        guard inputIsValid(for: task) else { return false }
-        switch (task.grade, parsedGrade(for: task)) {
-        case (nil, nil): return false
-        case let (old?, new?): return abs(old - new) > 0.0001
-        default: return true
-        }
-    }
-
-    func changedTasks(from tasks: [LumaTask]) -> [LumaTask] {
-        tasks.filter(gradeChanged)
-    }
-
-    func allInputsAreValid(tasks: [LumaTask]) -> Bool {
-        tasks.allSatisfy(inputIsValid)
-    }
-
-    func applyGrades(to tasks: [LumaTask]) {
-        for task in changedTasks(from: tasks) {
-            task.grade = parsedGrade(for: task)
-            task.touch()
-        }
-    }
-}
-
-@MainActor
-@Observable
-final class GradeSimulatorViewModel {
-    var simulatedGrades: [UUID: Double] = [:]
-
-    func pendingTasks(from tasks: [LumaTask]) -> [LumaTask] {
-        tasks.filter {
-            $0.academicEvaluationStatus == .upcomingEvaluation
-                || $0.academicEvaluationStatus == .awaitingGrade
-        }
-    }
-
-    func summary(
-        items: [SubjectGradeItem],
-        tasks: [LumaTask],
-        includeSimulation: Bool
-    ) -> SubjectGradeSummary {
-        SubjectGradeCalculator.makeSummary(
-            items: items,
-            tasks: tasks,
-            simulatedGrades: includeSimulation ? simulatedGrades : [:]
-        )
-    }
-
-    func allSimulated(tasks: [LumaTask]) -> Bool {
-        let pending = pendingTasks(from: tasks)
-        return !pending.isEmpty && pending.allSatisfy { simulatedGrades[$0.id] != nil }
-    }
-
-    var valuesAreValid: Bool {
-        simulatedGrades.values.allSatisfy { (0 ... 10).contains($0) }
-    }
-
-    func useRequiredGrade(_ grade: Double, tasks: [LumaTask]) {
-        for task in pendingTasks(from: tasks) { simulatedGrades[task.id] = grade }
-    }
-}
-
-@MainActor
-@Observable
 final class SubjectEditorViewModel {
     var name: String
-    var targetGrade: Double?
-    var drafts: [GradeItemDraft]
+    var colorHex: String
+    var syllabusRaw: String
+    var syllabusTopics: [StudyTopic]
+    var syllabusSourceFileName: String
+    var syllabusPageCount: Int
+    var meetings: [ClassMeetingDraft]
+    var isPDFImporterPresented = false
+    var isProcessingPDF = false
+    var processingProgress = 0.0
+    var processingStage = ""
+    var pdfMessage = ""
+    @ObservationIgnored private var extractedDocument: ExtractedStudyDocument?
 
-    init(subject: AcademicSubject?, existingItems: [SubjectGradeItem]) {
+    init(subject: AcademicSubject?, meetings: [SubjectClassMeeting] = []) {
         name = subject?.name ?? ""
-        targetGrade = subject?.targetGrade
-        drafts = existingItems.isEmpty && subject == nil
-            ? [GradeItemDraft()]
-            : existingItems.map(GradeItemDraft.init)
-    }
-
-    var parsedItems: [(draft: GradeItemDraft, weight: Double)]? {
-        var result: [(GradeItemDraft, Double)] = []
-        for draft in drafts {
-            let normalized = draft.weightText.replacingOccurrences(of: ",", with: ".")
-            guard !draft.trimmedTitle.isEmpty,
-                  let weight = Double(normalized),
-                  weight > 0,
-                  weight <= 100
-            else { return nil }
-            result.append((draft, weight))
+        colorHex = subject?.colorHex ?? "#59639A"
+        let initialTopics = subject?.syllabusStudyTopics ?? []
+        syllabusTopics = initialTopics
+        syllabusRaw = initialTopics.map(\.title).joined(separator: "\n")
+        syllabusSourceFileName = subject?.syllabusSourceFileName ?? ""
+        syllabusPageCount = subject?.syllabusPageCount ?? 0
+        self.meetings = meetings.map {
+            ClassMeetingDraft(
+                id: $0.id,
+                weekday: $0.weekday,
+                startMinuteOfDay: $0.startMinuteOfDay,
+                endMinuteOfDay: $0.endMinuteOfDay,
+                location: $0.location
+            )
+        }.sorted {
+            $0.weekday == $1.weekday
+                ? $0.startMinuteOfDay < $1.startMinuteOfDay
+                : $0.weekday < $1.weekday
         }
-        return result
     }
 
-    var total: Double {
-        parsedItems?.reduce(0) { $0 + $1.weight } ?? 0
+    var hasSyllabusPDF: Bool {
+        !syllabusSourceFileName.isEmpty
+    }
+
+    var canAnalyzeImportedPDF: Bool {
+        extractedDocument != nil
+    }
+
+    func importPDF(
+        _ result: Result<[URL], Error>,
+        using aiEngine: LocalAIEngine
+    ) async {
+        do {
+            guard let url = try result.get().first else { return }
+            isProcessingPDF = true
+            processingProgress = 0
+            processingStage = "Preparando el temario"
+            pdfMessage = ""
+
+            let document = try await PDFStudyExtractor().extract(from: url) { fraction, stage in
+                self.processingProgress = fraction * 0.28
+                self.processingStage = stage
+            }
+            extractedDocument = document
+            syllabusTopics = []
+            syllabusRaw = ""
+            syllabusSourceFileName = document.fileName
+            syllabusPageCount = document.pageCount
+
+            #if DEBUG
+            let readablePages = document.pages.map(\.pageNumber).map(String.init).joined(separator: ",")
+            print("📄 [TEMARIO-MATERIA] PDF extraído | archivo=\(document.fileName) | páginas=\(document.pageCount) | páginas con texto=\(readablePages)")
+            #endif
+
+            guard aiEngine.isInstalled || aiEngine.isStudyModelInstalled else {
+                isProcessingPDF = false
+                processingStage = ""
+                pdfMessage = "El PDF está listo. Prepará la IA local para detectar sus temas."
+                #if DEBUG
+                print("⏸️ [TEMARIO-MATERIA] Análisis pendiente | modelo local no instalado")
+                #endif
+                return
+            }
+
+            await analyzeImportedPDF(using: aiEngine)
+        } catch {
+            #if DEBUG
+            print("❌ [TEMARIO-MATERIA] No se pudo importar | \(error.localizedDescription)")
+            #endif
+            isProcessingPDF = false
+            processingStage = ""
+            pdfMessage = "No pude leer el PDF: \(error.localizedDescription)"
+        }
+    }
+
+    func analyzeImportedPDF(using aiEngine: LocalAIEngine) async {
+        guard let document = extractedDocument else { return }
+        guard aiEngine.isInstalled || aiEngine.isStudyModelInstalled else {
+            pdfMessage = "Primero prepará la IA local para analizar el temario."
+            return
+        }
+
+        do {
+            #if DEBUG
+            print("▶️ [TEMARIO-MATERIA] Analizando \(document.fileName) para la materia \(trimmedName.isEmpty ? "sin nombre todavía" : trimmedName)")
+            #endif
+            isProcessingPDF = true
+            processingProgress = max(processingProgress, 0.28)
+            processingStage = "Reconstruyendo el índice y los contenidos"
+            pdfMessage = ""
+            let referenceDate = Calendar.current.date(byAdding: .month, value: 6, to: .now) ?? .now
+            let topics = try await aiEngine.createExamStudyTopics(
+                for: document,
+                examDate: referenceDate
+            ) { fraction, stage in
+                self.processingProgress = 0.28 + fraction * 0.72
+                self.processingStage = stage
+            }
+
+            syllabusTopics = topics
+            syllabusRaw = topics.map(\.title).joined(separator: "\n")
+            syllabusSourceFileName = document.fileName
+            syllabusPageCount = document.pageCount
+            processingProgress = 1
+            processingStage = ""
+            pdfMessage = "Organicé \(topics.count) unidades o temas. Podés revisarlos antes de guardar la materia."
+            #if DEBUG
+            print("💾 [TEMARIO-MATERIA] Borrador listo | materia=\(trimmedName) | temas=\(topics.count)")
+            #endif
+        } catch {
+            #if DEBUG
+            print("❌ [TEMARIO-MATERIA] Falló el análisis | \(error.localizedDescription)")
+            #endif
+            processingStage = ""
+            pdfMessage = "No pude analizar el temario: \(error.localizedDescription)"
+        }
+        isProcessingPDF = false
+    }
+
+    func resolvedSyllabusTopics() -> [StudyTopic] {
+        let titles = syllabusRaw
+            .split(whereSeparator: \.isNewline)
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+        var existingByTitle: [String: StudyTopic] = [:]
+        for topic in syllabusTopics {
+            existingByTitle[normalized(topic.title)] = topic
+        }
+        return titles.map { title in
+            if var existing = existingByTitle[normalized(title)] {
+                existing.title = title
+                return existing
+            }
+            return StudyTopic(
+                title: title,
+                summary: "Tema incluido en el temario de \(trimmedName).",
+                keyPoints: [],
+                sourcePages: [],
+                importance: 2,
+                suggestedMinutes: 35,
+                taskID: nil
+            )
+        }
+    }
+
+    var syllabusStructureSummary: String {
+        let topics = resolvedSyllabusTopics()
+        let subtopicCount = topics.reduce(0) { $0 + $1.syllabusSubtopics.count }
+        let unitsLabel = topics.count == 1 ? "1 unidad" : "\(topics.count) unidades"
+        guard subtopicCount > 0 else { return unitsLabel }
+        let subtopicsLabel = subtopicCount == 1 ? "1 subtema" : "\(subtopicCount) subtemas"
+        return "\(unitsLabel) · \(subtopicsLabel)"
+    }
+
+    func clearSyllabus() {
+        syllabusRaw = ""
+        syllabusTopics = []
+        syllabusSourceFileName = ""
+        syllabusPageCount = 0
+        extractedDocument = nil
+        pdfMessage = ""
+        processingProgress = 0
+        processingStage = ""
     }
 
     var trimmedName: String {
@@ -201,9 +221,40 @@ final class SubjectEditorViewModel {
     func canSave(subject: AcademicSubject?, allSubjects: [AcademicSubject]) -> Bool {
         !trimmedName.isEmpty
             && !hasDuplicateName(subject: subject, allSubjects: allSubjects)
-            && !drafts.isEmpty
-            && parsedItems != nil
-            && total <= 100
-            && targetGrade.map { (0 ... 10).contains($0) } != false
+            && !hasInvalidMeeting
+            && !isProcessingPDF
     }
+
+    var hasInvalidMeeting: Bool {
+        meetings.contains { $0.endMinuteOfDay <= $0.startMinuteOfDay }
+    }
+
+    func addMeeting() {
+        var draft = ClassMeetingDraft()
+        if let previous = meetings.last {
+            draft.weekday = previous.weekday == 7 ? 2 : previous.weekday + 1
+            draft.startMinuteOfDay = previous.startMinuteOfDay
+            draft.endMinuteOfDay = previous.endMinuteOfDay
+        }
+        meetings.append(draft)
+    }
+
+    func removeMeeting(id: UUID) {
+        meetings.removeAll { $0.id == id }
+    }
+
+    private func normalized(_ value: String) -> String {
+        value
+            .folding(options: [.diacriticInsensitive, .caseInsensitive], locale: .current)
+            .lowercased()
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+}
+
+struct ClassMeetingDraft: Identifiable, Equatable {
+    var id = UUID()
+    var weekday = 2
+    var startMinuteOfDay = 9 * 60
+    var endMinuteOfDay = 11 * 60
+    var location = ""
 }

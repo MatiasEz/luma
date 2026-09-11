@@ -3,18 +3,17 @@ import Supabase
 
 enum LumaAuthStorage {
     static var current: any AuthLocalStorage {
-        #if DEBUG
-        LumaDebugAuthStorage()
-        #else
-        KeychainLocalStorage(service: "com.luma.organizer.supabase.auth")
-        #endif
+        LumaPreferencesAuthStorage()
     }
 }
 
-#if DEBUG
-private struct LumaDebugAuthStorage: AuthLocalStorage {
-    private let valuePrefix = "luma.debug.supabase.session."
-    private let migrationPrefix = "luma.debug.supabase.migration."
+/// The distributed app is currently signed ad hoc. macOS ties legacy Keychain
+/// permissions to that exact signature, so every new build would ask the user
+/// for their login Keychain password again. Keep the anonymous Supabase session
+/// in Luma's own preferences until releases use a stable Developer ID signature.
+private struct LumaPreferencesAuthStorage: AuthLocalStorage {
+    private let valuePrefix = "luma.supabase.session."
+    private let legacyDebugPrefix = "luma.debug.supabase.session."
 
     func store(key: String, value: Data) throws {
         UserDefaults.standard.set(value, forKey: valuePrefix + key)
@@ -27,14 +26,12 @@ private struct LumaDebugAuthStorage: AuthLocalStorage {
             return stored
         }
 
-        let migrationKey = migrationPrefix + key
-        guard !defaults.bool(forKey: migrationKey) else { return nil }
-        defaults.set(true, forKey: migrationKey)
-
-        // This preserves the existing anonymous cloud identity. At most, macOS may
-        // request access one final time while the old session is copied.
-        if let legacyValue = try? KeychainLocalStorage().retrieve(key: key) {
+        // Preserve sessions created by development builds without touching the
+        // legacy Keychain item, since reading it is what triggers the password UI.
+        let legacyKey = legacyDebugPrefix + key
+        if let legacyValue = defaults.data(forKey: legacyKey) {
             defaults.set(legacyValue, forKey: valueKey)
+            defaults.removeObject(forKey: legacyKey)
             return legacyValue
         }
         return nil
@@ -42,6 +39,6 @@ private struct LumaDebugAuthStorage: AuthLocalStorage {
 
     func remove(key: String) throws {
         UserDefaults.standard.removeObject(forKey: valuePrefix + key)
+        UserDefaults.standard.removeObject(forKey: legacyDebugPrefix + key)
     }
 }
-#endif

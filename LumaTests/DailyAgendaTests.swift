@@ -30,6 +30,91 @@ final class DailyAgendaTests: XCTestCase {
         XCTAssertLessThanOrEqual(try XCTUnwrap(blocks.last).endMinuteOfDay - 9 * 60, 120)
     }
 
+    func testAssignedBlocksKeepTheirMinutesWithOneRestReservation() throws {
+        let now = Date.now
+        let tasks = makeTasks(now: now) + [LumaTask(
+            title: "Descanso",
+            area: .hobbies,
+            estimatedMinutes: 15,
+            energy: .low,
+            impact: .wellbeing,
+            sourceTypeRaw: AcademicTaskSourceType.rest.rawValue,
+            sourceOccurrenceDate: now
+        )]
+        let planner = TaskPlanner(availableMinutes: 120, restCounts: true)
+        let recommendations = planner.recommendations(from: tasks, now: now)
+        XCTAssertEqual(recommendations.map(\.suggestedMinutes), [45, 45, 15])
+        let expectedMinutes = Dictionary(uniqueKeysWithValues: recommendations.map {
+            ($0.id, $0.suggestedMinutes)
+        })
+        let suiteName = "DailyAgendaRestTests.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let state = AppState(defaults: defaults, now: now)
+        let scheduler = DailyScheduler()
+        _ = state.prepareDailyPlan(from: tasks, planner: planner, now: now)
+        state.configureDailyAgenda(
+            availableMinutes: 120,
+            startMinuteOfDay: 9 * 60,
+            tasks: tasks,
+            planner: planner,
+            scheduler: scheduler,
+            now: now
+        )
+        let blocks = try XCTUnwrap(state.dailyAgenda?.blocks)
+        XCTAssertEqual(Dictionary(uniqueKeysWithValues: blocks.map { ($0.taskID, $0.durationMinutes) }), expectedMinutes)
+        XCTAssertEqual(blocks.reduce(0) { $0 + $1.durationMinutes }, 105)
+
+        let proposal = ReplanProposalBuilder.make(
+            source: .dashboard,
+            explanation: "Mantener el plan",
+            tasks: tasks,
+            currentPlan: state.dailyPlan,
+            currentAgenda: state.dailyAgenda,
+            currentEnergy: .normal,
+            proposedEnergy: .normal,
+            currentAvailableMinutes: 120,
+            planner: planner,
+            scheduler: scheduler,
+            now: now
+        )
+        XCTAssertEqual(proposal.afterRestMinutes, 15)
+        XCTAssertEqual(Dictionary(uniqueKeysWithValues: proposal.afterBlocks.map { ($0.taskID, $0.durationMinutes) }), expectedMinutes)
+
+        let busy = BusyTimeBlock(title: "Clase", startMinuteOfDay: 9 * 60 + 30, endMinuteOfDay: 10 * 60 + 30)
+        let aroundClass = scheduler.schedule(
+            recommendations: recommendations,
+            availabilityWindows: [AvailabilityWindow(startMinuteOfDay: 9 * 60, endMinuteOfDay: 12 * 60)],
+            busyBlocks: [busy],
+            reservedRestMinutes: 15
+        )
+        XCTAssertEqual(Dictionary(uniqueKeysWithValues: aroundClass.map { ($0.taskID, $0.durationMinutes) }), expectedMinutes)
+        XCTAssertTrue(aroundClass.allSatisfy {
+            $0.endMinuteOfDay <= busy.startMinuteOfDay || $0.startMinuteOfDay >= busy.endMinuteOfDay
+        })
+    }
+
+    func testAssignedShortBlocksDoNotCreateExtraTime() {
+        let task = makeTasks(now: .now)[0]
+        let scheduler = DailyScheduler()
+        for minutes in [0, 5, 10] {
+            let recommendations = [PlanRecommendation(task: task, score: 1, reason: "Avance breve", suggestedMinutes: minutes)]
+            let blocks = scheduler.schedule(
+                recommendations: recommendations,
+                availableMinutes: minutes,
+                startMinuteOfDay: 9 * 60,
+                reservedRestMinutes: 0
+            )
+            XCTAssertEqual(blocks.reduce(0) { $0 + $1.durationMinutes }, minutes)
+            XCTAssertEqual(blocks.count, minutes == 0 ? 0 : 1)
+        }
+        XCTAssertTrue(scheduler.schedule(
+            recommendations: makeRecommendations(),
+            availableMinutes: 0,
+            startMinuteOfDay: 9 * 60
+        ).isEmpty)
+    }
+
     func testAvailabilityPhraseDetectsTimeStartAndEnergy() {
         let draft = NaturalLanguageAgendaParser().parse(
             "Hoy tengo una hora desde las 16 y estoy cansada"

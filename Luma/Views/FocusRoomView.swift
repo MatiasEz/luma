@@ -6,8 +6,11 @@ struct FocusRoomView: View {
     @Environment(AppState.self) private var appState
     @Environment(\.modelContext) private var modelContext
     @Query(sort: \LumaTask.createdAt) private var tasks: [LumaTask]
+    @Query(sort: \DailyPlanningContext.updatedAt) private var dailyContexts: [DailyPlanningContext]
 
     @State private var viewModel = FocusRoomViewModel()
+    @State private var sessionSaveFailed = false
+    @State private var completedTaskID: UUID?
 
     private var selectedTaskID: UUID? {
         get { viewModel.selectedTaskID }
@@ -55,6 +58,9 @@ struct FocusRoomView: View {
     private var selectedTask: LumaTask? {
         viewModel.selectedTask(from: tasks)
     }
+    private var displayedTask: LumaTask? {
+        completedSession ? tasks.first { $0.id == completedTaskID } : selectedTask
+    }
 
     var body: some View {
         GeometryReader { proxy in
@@ -75,7 +81,9 @@ struct FocusRoomView: View {
                         sidePanel
                             .background(Color.white.opacity(0.30))
                     }
+                    .lumaScrollContent()
                 }
+                .lumaScrollSurface()
             }
         }
         .background(LumaBackground())
@@ -104,6 +112,11 @@ struct FocusRoomView: View {
         }
         .onDisappear {
             ambientAudio.stop()
+        }
+        .alert("No se pudo guardar la sesión", isPresented: $sessionSaveFailed) {
+            Button("Aceptar", role: .cancel) {}
+        } message: {
+            Text("Tu tiempo no cambió. Usá Terminar sesión para volver a intentar guardarla.")
         }
     }
 
@@ -150,12 +163,12 @@ struct FocusRoomView: View {
             }
 
             VStack(spacing: 8) {
-                Text(selectedTask?.title ?? "Elegí un pendiente para empezar")
+                Text(displayedTask?.title ?? "Elegí un pendiente para empezar")
                     .font(.title2.weight(.semibold))
                     .foregroundStyle(LumaPalette.ink)
                     .multilineTextAlignment(.center)
                     .fixedSize(horizontal: false, vertical: true)
-                if let area = selectedTask?.area {
+                if let area = displayedTask?.area {
                     AreaPill(area: area)
                 }
             }
@@ -253,7 +266,9 @@ struct FocusRoomView: View {
                         .font(.caption)
                         .foregroundStyle(LumaPalette.secondaryInk)
                     Button("Marcar como hecho") {
-                        guard let task = selectedTask else { return }
+                        guard let task = tasks.first(where: { $0.id == completedTaskID }),
+                              !task.isCompleted
+                        else { return }
                         task.markCompleted()
                         recordedSession?.completedTask = true
                         try? modelContext.save()
@@ -261,6 +276,7 @@ struct FocusRoomView: View {
                     }
                     .buttonStyle(.borderedProminent)
                     .tint(LumaPalette.sage)
+                    .disabled(displayedTask?.isCompleted != false)
                 }
                 .lumaCard(padding: 14)
             }
@@ -397,14 +413,6 @@ struct FocusRoomView: View {
                     in: 0 ... 1
                 )
                 .disabled(!ambientAudio.isEnabled)
-
-                if !isRunning {
-                    Button(ambientAudio.isPlaying ? "Detener" : "Probar") {
-                        ambientAudio.togglePreview()
-                    }
-                    .buttonStyle(.borderless)
-                    .disabled(!ambientAudio.isEnabled || ambientAudio.loadError != nil)
-                }
             }
 
             Text(ambientAudio.loadError ?? "Se reproduce en loop durante tu sesión y funciona sin internet.")
@@ -424,7 +432,7 @@ struct FocusRoomView: View {
     }
 
     private var sessionSummary: String {
-        guard let task = selectedTask else {
+        guard let task = displayedTask else {
             return "Bien ahí. Una sesión corta también cuenta."
         }
         return "Registré \(lastRecordedMinutes) min. Llevás \(task.focusedMinutes) de \(task.estimatedMinutes) min estimados."
@@ -452,16 +460,24 @@ struct FocusRoomView: View {
     }
 
     private func completeSession(minutes: Int) {
-        guard !completedSession, let selectedTask else { return }
+        guard !completedSession, elapsedSeconds > 0, minutes > 0, let selectedTask else { return }
+        let endedAt = Date.now
+        let eventID = UUID()
+        let initialAvailableMinutes = dailyContexts.first {
+            Calendar.current.isDate($0.day, inSameDayAs: endedAt)
+        }?.availableMinutes ?? 120
+        appState.ensureDailyTimeBudget(availableMinutes: initialAvailableMinutes, now: endedAt)
+        let previousTask = LumaTaskSnapshot(task: selectedTask)
         isRunning = false
         ambientAudio.stop()
-        completedSession = true
-        remainingSeconds = 0
-        lastRecordedMinutes = minutes
-        selectedTask.recordFocusSession(minutes: minutes)
+        selectedTask.recordFocusSession(minutes: minutes, at: endedAt)
+        let isRest = selectedTask.academicSourceType == .rest
+        if isRest, minutes >= (appState.dailyPlan?.restMinutes ?? durationMinutes) {
+            selectedTask.markCompleted()
+        }
 
+        var newSession: FocusSession?
         if appState.learningEnabled {
-            let endedAt = Date.now
             let session = FocusSession(
                 taskID: selectedTask.id,
                 taskTitle: selectedTask.title,
@@ -470,13 +486,39 @@ struct FocusRoomView: View {
                 actualMinutes: minutes,
                 startedAt: sessionStartedAt ?? endedAt,
                 endedAt: endedAt,
-                energyPreference: appState.energyPreference
+                energyPreference: appState.energyPreference,
+                completedTask: selectedTask.isCompleted
             )
             modelContext.insert(session)
-            recordedSession = session
+            newSession = session
         }
 
-        try? modelContext.save()
+        do {
+            try modelContext.save()
+        } catch {
+            if let newSession { modelContext.delete(newSession) }
+            selectedTask.status = previousTask.status
+            selectedTask.completedAt = previousTask.completedAt
+            selectedTask.focusedMinutes = previousTask.focusedMinutes
+            selectedTask.focusSessionCount = previousTask.focusSessionCount
+            selectedTask.lastFocusedAt = previousTask.lastFocusedAt
+            selectedTask.updatedAt = previousTask.updatedAt
+            sessionSaveFailed = true
+            return
+        }
+        _ = appState.recordTimeSpent(
+            eventID: eventID,
+            minutes: minutes,
+            initialAvailableMinutes: initialAvailableMinutes,
+            now: endedAt
+        )
+        if isRest { appState.finishRest(minutes: minutes) }
+        appState.finishPlannedBlock(for: selectedTask.id)
+        completedTaskID = selectedTask.id
+        completedSession = true
+        remainingSeconds = 0
+        lastRecordedMinutes = minutes
+        recordedSession = newSession
         appState.refreshPlan()
     }
 }

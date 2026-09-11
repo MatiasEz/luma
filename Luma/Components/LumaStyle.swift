@@ -1,5 +1,51 @@
 import SwiftUI
 
+enum LumaHomeStyle {
+    static let canvas = Color(red: 244 / 255, green: 240 / 255, blue: 231 / 255)
+    static let paper = Color(red: 255 / 255, green: 253 / 255, blue: 248 / 255)
+    static let sidebar = Color(red: 249 / 255, green: 247 / 255, blue: 240 / 255)
+    static let ink = Color(red: 48 / 255, green: 49 / 255, blue: 69 / 255)
+    static let muted = Color(red: 102 / 255, green: 100 / 255, blue: 116 / 255)
+    static let line = Color(red: 228 / 255, green: 223 / 255, blue: 213 / 255)
+    static let accent = Color(red: 80 / 255, green: 82 / 255, blue: 127 / 255)
+    static let tint = Color(red: 233 / 255, green: 232 / 255, blue: 242 / 255)
+    static let sage = Color(red: 223 / 255, green: 233 / 255, blue: 222 / 255)
+    static let sageInk = Color(red: 59 / 255, green: 87 / 255, blue: 71 / 255)
+}
+
+struct LumaHomeButtonStyle: ButtonStyle {
+    enum Emphasis { case primary, secondary, quiet }
+    var emphasis: Emphasis = .secondary
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .font(.system(size: 13, weight: emphasis == .primary ? .semibold : .medium))
+            .padding(.horizontal, emphasis == .quiet ? 8 : 14)
+            .padding(.vertical, 10)
+            .foregroundStyle(emphasis == .primary ? LumaHomeStyle.paper : LumaHomeStyle.accent)
+            .background {
+                RoundedRectangle(cornerRadius: 9, style: .continuous)
+                    .fill(backgroundColor(isPressed: configuration.isPressed))
+            }
+            .overlay {
+                if emphasis == .secondary {
+                    RoundedRectangle(cornerRadius: 9, style: .continuous)
+                        .stroke(LumaHomeStyle.line, lineWidth: 1)
+                }
+            }
+            .contentShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
+            .opacity(configuration.isPressed ? 0.82 : 1)
+    }
+
+    private func backgroundColor(isPressed: Bool) -> Color {
+        switch emphasis {
+        case .primary: LumaHomeStyle.accent
+        case .secondary: LumaHomeStyle.paper
+        case .quiet: isPressed ? LumaHomeStyle.tint : .clear
+        }
+    }
+}
+
 enum LumaPalette {
     static let canvas = Color(red: 0.965, green: 0.944, blue: 0.905)
     static let canvasDeep = Color(red: 0.910, green: 0.891, blue: 0.858)
@@ -83,6 +129,20 @@ struct SoftButtonStyle: ButtonStyle {
             .foregroundStyle(color)
             .background(color.opacity(configuration.isPressed ? 0.18 : 0.11), in: Capsule())
             .scaleEffect(configuration.isPressed ? 0.98 : 1)
+    }
+}
+
+extension View {
+    /// Makes transparent margins part of the vertical scroll gesture surface.
+    func lumaScrollContent() -> some View {
+        frame(maxWidth: .infinity, alignment: .topLeading)
+            .contentShape(Rectangle())
+    }
+
+    /// Ensures the scroll container participates in hit testing across its full window area.
+    func lumaScrollSurface() -> some View {
+        frame(maxWidth: .infinity, maxHeight: .infinity)
+            .contentShape(Rectangle())
     }
 }
 

@@ -8,7 +8,6 @@ struct TaskEditorView: View {
     @Environment(\.modelContext) private var modelContext
     @Query(sort: \LumaTask.createdAt) private var tasks: [LumaTask]
     @Query(sort: \AcademicSubject.name) private var subjects: [AcademicSubject]
-    @Query(sort: \SubjectGradeItem.createdAt) private var gradeItems: [SubjectGradeItem]
 
     let task: LumaTask
 
@@ -23,12 +22,8 @@ struct TaskEditorView: View {
         viewModel.availableSubjects(from: subjects)
     }
 
-    private var availableGradeItems: [SubjectGradeItem] {
-        viewModel.availableGradeItems(from: gradeItems)
-    }
-
     private var assignmentIsValid: Bool {
-        viewModel.assignmentIsValid(subjects: subjects, gradeItems: gradeItems)
+        viewModel.assignmentIsValid(subjects: subjects)
     }
 
     private var canSave: Bool {
@@ -40,7 +35,7 @@ struct TaskEditorView: View {
                     in: tasks
                 )
         } ?? true
-        return viewModel.canSave(subjects: subjects, gradeItems: gradeItems)
+        return viewModel.canSave(subjects: subjects)
             && assignmentIsValid
             && dependencyIsValid
     }
@@ -60,7 +55,9 @@ struct TaskEditorView: View {
                 }
                 .padding(18)
                 .background(Color.white.opacity(0.56), in: RoundedRectangle(cornerRadius: 18))
+                .lumaScrollContent()
             }
+            .lumaScrollSurface()
 
             footer
         }
@@ -121,23 +118,51 @@ struct TaskEditorView: View {
     private var planningFields: some View {
         VStack(alignment: .leading, spacing: 14) {
             HStack(spacing: 16) {
-                Toggle("Tiene fecha límite", isOn: Binding(
+                Toggle("Tiene fecha de entrega", isOn: Binding(
+                    get: { viewModel.dueDate != nil },
+                    set: { viewModel.dueDate = $0 ? (.now.addingTimeInterval(86_400)) : nil }
+                ))
+
+                if viewModel.dueDate != nil {
+                    DatePicker(
+                        "Entrega",
+                        selection: Binding(get: { viewModel.dueDate ?? .now }, set: { viewModel.dueDate = $0 }),
+                        displayedComponents: [.date]
+                    )
+                    .labelsHidden()
+                    Text("Luma intentará dejarla lista el día anterior")
+                        .font(.caption)
+                        .foregroundStyle(LumaPalette.sage)
+                }
+                Spacer()
+            }
+
+            HStack(spacing: 16) {
+                Toggle("Programar en calendario", isOn: Binding(
                     get: { viewModel.deadline != nil },
                     set: { viewModel.deadline = $0 ? (.now.addingTimeInterval(86400)) : nil }
                 ))
 
                 if viewModel.deadline != nil {
                     DatePicker(
-                        "",
+                        "Día de trabajo",
                         selection: Binding(get: { viewModel.deadline ?? .now }, set: { viewModel.deadline = $0 }),
                         displayedComponents: [.date]
                     )
                     .labelsHidden()
+
+                    DatePicker(
+                        "Hora de inicio",
+                        selection: Binding(get: { viewModel.deadline ?? .now }, set: { viewModel.deadline = $0 }),
+                        displayedComponents: [.hourAndMinute]
+                    )
+                    .labelsHidden()
                 }
 
-                Stepper("\(viewModel.estimatedMinutes) min", value: $viewModel.estimatedMinutes, in: 5 ... 480, step: 5)
                 Spacer()
             }
+
+            Stepper("Duración total estimada: \(viewModel.estimatedMinutes) min", value: $viewModel.estimatedMinutes, in: 5 ... 1_800, step: 5)
 
             HStack(spacing: 18) {
                 Toggle("Completada", isOn: $viewModel.isCompleted)
@@ -155,19 +180,14 @@ struct TaskEditorView: View {
     private var academicFields: some View {
         AcademicTaskFields(
             subjects: availableSubjects,
-            gradeItems: availableGradeItems,
-            subjectID: $viewModel.academicSubjectID,
-            gradeItemID: $viewModel.subjectGradeItemID,
-            grade: $viewModel.grade,
-            legacyWeight: $viewModel.academicWeight,
-            isCompleted: viewModel.isCompleted
+            subjectID: $viewModel.academicSubjectID
         )
     }
 
     private var notesField: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
-                Text("Notas")
+                Text("Descripción")
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(LumaPalette.secondaryInk)
                 Spacer()

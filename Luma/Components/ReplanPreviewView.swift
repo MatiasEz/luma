@@ -35,6 +35,8 @@ struct ReplanPreviewView: View {
                     availableMinutes: proposal.beforeAvailableMinutes,
                     taskIDs: proposal.beforeTaskIDs,
                     blocks: proposal.beforeBlocks,
+                    suggestedMinutes: proposal.beforeSuggestedMinutesByTaskID,
+                    restMinutes: proposal.beforeRestMinutes,
                     color: LumaPalette.secondaryInk
                 )
                 Image(systemName: "arrow.right")
@@ -46,6 +48,8 @@ struct ReplanPreviewView: View {
                     availableMinutes: proposal.afterAvailableMinutes,
                     taskIDs: proposal.afterTaskIDs,
                     blocks: proposal.afterBlocks,
+                    suggestedMinutes: proposal.afterSuggestedMinutesByTaskID,
+                    restMinutes: proposal.afterRestMinutes,
                     color: LumaPalette.indigo
                 )
             }
@@ -85,6 +89,8 @@ struct ReplanPreviewView: View {
         availableMinutes: Int,
         taskIDs: [UUID],
         blocks: [AgendaBlockSnapshot],
+        suggestedMinutes: [UUID: Int]?,
+        restMinutes: Int,
         color: Color
     ) -> some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -113,7 +119,7 @@ struct ReplanPreviewView: View {
                                 .font(.subheadline.weight(.semibold))
                                 .foregroundStyle(LumaPalette.ink)
                                 .lineLimit(1)
-                            Text(blockTitle(block))
+                            Text(blockTitle(block, suggestedMinutes: suggestedMinutes?[taskID]))
                                 .font(.caption2)
                                 .foregroundStyle(LumaPalette.secondaryInk)
                         }
@@ -123,14 +129,24 @@ struct ReplanPreviewView: View {
                     .background(Color.white.opacity(0.7), in: RoundedRectangle(cornerRadius: 12))
                 }
             }
+            if restMinutes > 0 {
+                Label("Descanso · \(restMinutes) min", systemImage: "cup.and.saucer.fill")
+                    .font(.caption)
+                    .foregroundStyle(LumaPalette.sage)
+            }
         }
         .frame(maxWidth: .infinity, minHeight: 280, alignment: .top)
         .lumaCard(padding: 16)
     }
 
-    private func blockTitle(_ block: AgendaBlockSnapshot?) -> String {
-        guard let block else { return "Sin bloque asignado" }
+    private func blockTitle(_ block: AgendaBlockSnapshot?, suggestedMinutes: Int?) -> String {
+        guard let block else {
+            return suggestedMinutes.map { "\($0) min · sin horario asignado" } ?? "Sin bloque asignado"
+        }
         let start = scheduler.date(on: proposal.day, minuteOfDay: block.startMinuteOfDay)
+        if let suggestedMinutes, suggestedMinutes != block.durationMinutes {
+            return "\(suggestedMinutes) min previstos · \(block.durationMinutes) min caben en la agenda"
+        }
         return "\(start.formatted(date: .omitted, time: .shortened)) · \(block.durationMinutes) min"
     }
 

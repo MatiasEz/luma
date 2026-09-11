@@ -29,6 +29,8 @@ final class CalendarIntegrationService {
     private static let eventIdentifierPrefix = "lumaCalendarEventIdentifier."
     private let store = EKEventStore()
     private let defaults = UserDefaults.standard
+    @ObservationIgnored private var commitmentsDay: Date?
+    @ObservationIgnored private var commitmentsRefreshedAt: Date?
 
     private(set) var isAuthorized = false
     private(set) var commitments: [CalendarCommitment] = []
@@ -126,13 +128,21 @@ final class CalendarIntegrationService {
         }
     }
 
-    func refreshCommitments(for day: Date = .now) {
+    func refreshCommitments(for day: Date = .now, force: Bool = false) {
         guard isAuthorized, isEnabled else {
             commitments = []
             return
         }
         let calendar = Calendar.current
         let start = calendar.startOfDay(for: day)
+        if !force,
+           let commitmentsDay,
+           calendar.isDate(commitmentsDay, inSameDayAs: start),
+           let commitmentsRefreshedAt,
+           Date.now.timeIntervalSince(commitmentsRefreshedAt) < 60
+        {
+            return
+        }
         let end = calendar.date(byAdding: .day, value: 1, to: start) ?? start
         let predicate = store.predicateForEvents(withStart: start, end: end, calendars: nil)
         commitments = store.events(matching: predicate)
@@ -146,6 +156,8 @@ final class CalendarIntegrationService {
                 )
             }
             .sorted { $0.start < $1.start }
+        commitmentsDay = start
+        commitmentsRefreshedAt = .now
     }
 
     func busyBlocks(for day: Date = .now) -> [BusyTimeBlock] {
@@ -212,12 +224,19 @@ final class CalendarIntegrationService {
 
         do {
             let event = trackedEvent(for: task.id) ?? EKEvent(eventStore: store)
-            let dayStart = Calendar.current.startOfDay(for: deadline)
+            let deadlineComponents = Calendar.current.dateComponents([.hour, .minute], from: deadline)
+            let isLegacyAllDay = deadlineComponents.hour == 23 && deadlineComponents.minute == 59
             event.calendar = targetCalendar
             event.title = task.isCompleted ? "✓ Luma · \(task.title)" : "Luma · \(task.title)"
-            event.isAllDay = true
-            event.startDate = dayStart
-            event.endDate = Calendar.current.date(byAdding: .day, value: 1, to: dayStart) ?? dayStart
+            event.isAllDay = isLegacyAllDay
+            if isLegacyAllDay {
+                let dayStart = Calendar.current.startOfDay(for: deadline)
+                event.startDate = dayStart
+                event.endDate = Calendar.current.date(byAdding: .day, value: 1, to: dayStart) ?? dayStart
+            } else {
+                event.startDate = deadline
+                event.endDate = deadline.addingTimeInterval(TimeInterval(max(5, task.estimatedMinutes) * 60))
+            }
             event.notes = "\(marker(for: task.id))\nTarea sincronizada automáticamente por Luma."
             try store.save(event, span: .thisEvent, commit: true)
             if let identifier = event.eventIdentifier {
