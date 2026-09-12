@@ -32,3 +32,11 @@ La semana futura es una propuesta basada en la disponibilidad habitual; se calcu
 La recuperación de cuenta entre dispositivos sigue siendo distinta de la recuperación mediante respaldo completo. No se ensayaron todas las combinaciones de desconexión y concurrencia entre dos Macs. Tampoco se midió en esta entrega la calidad de conversaciones abiertas con el modelo local ni se añadió música, rachas o nuevas integraciones.
 
 El instalador es una compilación de desarrollo con firma local, para Apple Silicon y macOS 14 o posterior. La distribución sin advertencias de macOS requiere firma Developer ID y notarización.
+
+## Entrega verificada
+
+- Código compilado: `cbc913d586c48bead0f532b0eae4ae6e84077546`.
+- Compilación Release correcta: Luma 0.8.0, build 14, arquitectura arm64. Arranque comprobado durante 11 segundos con base en memoria; se cerró esa instancia de comprobación.
+- Firma local validada con comprobación estricta del paquete completo.
+- `Luma-0.8.0-macOS.dmg`: 31.280.226 bytes. Imagen verificada, montada en modo de solo lectura y desmontada correctamente; contiene la app 0.8.0 (14), enlace a Aplicaciones y notas.
+- SHA-256 del instalador: `3c4b73533122f01b6f0b18a26c6a1ed51a8810f5060c458b7ee7377afb5aa199`.
